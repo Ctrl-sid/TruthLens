@@ -1,0 +1,156 @@
+:root {
+  --bg-primary: #0b0f19;
+  --bg-card: rgba(15, 23, 42, 0.75);
+  --bg-card-hover: rgba(30, 41, 59, 0.85);
+  --border-glass: rgba(255, 255, 255, 0.1);
+  --accent-cyan: #00f2fe;
+  --accent-blue: #4facfe;
+  --accent-purple: #7f00ff;
+  --success-green: #10b981;
+  --warning-amber: #f59e0b;
+  --danger-red: #ef4444;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', sans-serif;
+  background-color: var(--bg-primary);
+  background-image: 
+    radial-gradient(circle at 15% 15%, rgba(0, 242, 254, 0.08) 0%, transparent 40%),
+    radial-gradient(circle at 85% 75%, rgba(127, 0, 255, 0.08) 0%, transparent 40%);
+  color: var(--text-main);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+h1, h2, h3, h4, h5, h6, .brand-font {
+  font-family: 'Outfit', sans-serif;
+}
+
+/* Glassmorphism Classes */
+.glass-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-glass);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  border-radius: 16px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card:hover {
+  border-color: rgba(0, 242, 254, 0.3);
+}
+
+.glass-nav {
+  background: rgba(11, 15, 25, 0.85);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border-glass);
+}
+
+/* Neon Text & Badges */
+.text-cyan {
+  color: var(--accent-cyan) !important;
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-blue) 50%, var(--accent-purple) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.btn-cyan-gradient {
+  background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+  color: #0b0f19;
+  font-weight: 700;
+  border: none;
+  box-shadow: 0 4px 15px rgba(0, 242, 254, 0.3);
+  transition: all 0.3s ease;
+}
+
+.btn-cyan-gradient:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 242, 254, 0.5);
+  color: #000;
+}
+
+/* Tabs & Inputs */
+.nav-pills .nav-link {
+  color: var(--text-muted);
+  border-radius: 12px;
+  font-weight: 600;
+  padding: 10px 20px;
+  transition: all 0.3s ease;
+}
+
+.nav-pills .nav-link.active {
+  background: linear-gradient(135deg, rgba(0, 242, 254, 0.2) 0%, rgba(79, 172, 254, 0.2) 100%);
+  color: var(--accent-cyan);
+  border: 1px solid rgba(0, 242, 254, 0.4);
+}
+
+.form-control-dark {
+  background: rgba(15, 23, 42, 0.6) !important;
+  border: 1px solid var(--border-glass) !important;
+  color: #fff !important;
+  border-radius: 12px;
+}
+
+.form-control-dark:focus {
+  border-color: var(--accent-cyan) !important;
+  box-shadow: 0 0 15px rgba(0, 242, 254, 0.25) !important;
+}
+
+/* Pulse Scanner Loading Animation */
+.scanner-container {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  margin: 0 auto;
+}
+
+.scanner-ring {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  border-top-color: var(--accent-cyan);
+  animation: spin 1.2s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Gauge Meter SVG Styling */
+.gauge-background {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.1);
+  stroke-width: 12;
+}
+
+.gauge-progress {
+  fill: none;
+  stroke-width: 12;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1.5s ease-in-out, stroke 0.5s ease;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0b0f19;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-cyan);
+}
