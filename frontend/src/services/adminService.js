@@ -1,29 +1,69 @@
 import api from './api';
 
+const DEFAULT_USERS = [
+  { id: 1, username: 'admin', email: 'admin@truthlens.ai', fullName: 'TruthLens Admin Superuser', role: 'ROLE_ADMIN', status: 'ACTIVE', createdAt: '2026-08-15 17:27' },
+  { id: 2, username: 'akshay', email: 'akshay@gmail.com', fullName: 'Akshay Prince', role: 'ROLE_USER', status: 'ACTIVE', createdAt: '2026-08-15 18:40' },
+  { id: 3, username: 'ashwin', email: 'ashwin@gmail.com', fullName: 'Ashwin Raj', role: 'ROLE_USER', status: 'BANNED', createdAt: '2026-08-15 18:41' }
+];
+
+function getStoredUsers() {
+  const localList = localStorage.getItem('truthlens_admin_users');
+  if (localList) {
+    try {
+      const parsed = JSON.parse(localList);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Filter out legacy mock data if present
+        const hasLegacy = parsed.some(u => u.username === 'john_doe' || u.username === 'sarah_m' || u.username === 'spammer_99');
+        if (!hasLegacy) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      // fallback
+    }
+  }
+  localStorage.setItem('truthlens_admin_users', JSON.stringify(DEFAULT_USERS));
+  return DEFAULT_USERS;
+}
+
+function saveStoredUsers(users) {
+  localStorage.setItem('truthlens_admin_users', JSON.stringify(users));
+}
+
 export const adminService = {
   getUsers: async () => {
     try {
       const response = await api.get('/admin/users');
-      return response.data;
+      if (response.data && Array.isArray(response.data)) {
+        saveStoredUsers(response.data);
+        return response.data;
+      }
     } catch (err) {
-      console.warn('Backend API offline, returning fallback mock admin users list');
-      return getFallbackUsers();
+      console.warn('Backend API offline or unauthorized, returning database-aligned fallback list');
     }
+    return getStoredUsers();
   },
 
   updateUserStatus: async (userId, status, reason) => {
+    const users = getStoredUsers();
+    const user = users.find(u => u.id === userId);
+    if (user) {
+      user.status = status;
+      saveStoredUsers(users);
+    }
+
     try {
       const response = await api.put(`/admin/users/${userId}/status`, { status, reason });
       return response.data;
     } catch (err) {
-      const mockUsers = getFallbackUsers();
-      const user = mockUsers.find(u => u.id === userId);
-      if (user) user.status = status;
       return user;
     }
   },
 
   deleteUser: async (userId) => {
+    const users = getStoredUsers().filter(u => u.id !== userId);
+    saveStoredUsers(users);
+
     try {
       await api.delete(`/admin/users/${userId}`);
     } catch (err) {
@@ -75,15 +115,6 @@ export const adminService = {
     }
   }
 };
-
-function getFallbackUsers() {
-  return [
-    { id: 1, username: 'admin', email: 'admin@truthlens.ai', fullName: 'TruthLens Admin Superuser', role: 'ROLE_ADMIN', status: 'ACTIVE', createdAt: '2026-08-01 10:00' },
-    { id: 2, username: 'john_doe', email: 'john@example.com', fullName: 'John Doe', role: 'ROLE_USER', status: 'ACTIVE', createdAt: '2026-08-02 14:20' },
-    { id: 3, username: 'sarah_m', email: 'sarah@example.com', fullName: 'Sarah Miller', role: 'ROLE_USER', status: 'WARNED', createdAt: '2026-08-03 09:15' },
-    { id: 4, username: 'spammer_99', email: 'spammer@example.com', fullName: 'Spam Bot', role: 'ROLE_USER', status: 'BANNED', createdAt: '2026-08-04 18:40' }
-  ];
-}
 
 function getFallbackAdminInbox() {
   return [
