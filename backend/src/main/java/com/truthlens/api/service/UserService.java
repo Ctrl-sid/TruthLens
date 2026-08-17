@@ -39,27 +39,38 @@ public class UserService {
 
     public AuthDTO.AuthResponse login(AuthDTO.LoginRequest request) {
         User user = userRepository.findByUsername(request.getUsername())
-                .orElseThrow(() -> new IllegalArgumentException("Invalid username or password"));
+                .orElse(null);
 
-        if ("BANNED".equalsIgnoreCase(user.getStatus())) {
-            throw new IllegalArgumentException("Your account has been suspended/banned due to code of conduct violations.");
+        if (user != null && "BANNED".equalsIgnoreCase(user.getStatus())) {
+            throw new IllegalArgumentException("Access Denied: Your account has been suspended/banned due to code of conduct violations.");
         }
 
-        Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
-        );
+        if (user == null) {
+            throw new IllegalArgumentException("Invalid username or password");
+        }
 
-        String token = tokenProvider.generateToken(authentication);
+        try {
+            Authentication authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
+            );
 
-        return AuthDTO.AuthResponse.builder()
-                .token(token)
-                .tokenType("Bearer")
-                .username(user.getUsername())
-                .email(user.getEmail())
-                .fullName(user.getFullName())
-                .role(user.getRole())
-                .status(user.getStatus())
-                .build();
+            String token = tokenProvider.generateToken(authentication);
+
+            return AuthDTO.AuthResponse.builder()
+                    .token(token)
+                    .tokenType("Bearer")
+                    .username(user.getUsername())
+                    .email(user.getEmail())
+                    .fullName(user.getFullName())
+                    .role(user.getRole())
+                    .status(user.getStatus())
+                    .build();
+        } catch (org.springframework.security.authentication.DisabledException | 
+                 org.springframework.security.authentication.LockedException e) {
+            throw new IllegalArgumentException("Access Denied: Your account has been suspended/banned due to code of conduct violations.");
+        } catch (org.springframework.security.authentication.BadCredentialsException e) {
+            throw new IllegalArgumentException("Invalid username or password");
+        }
     }
 
     public AuthDTO.AuthResponse register(AuthDTO.RegisterRequest request) {
