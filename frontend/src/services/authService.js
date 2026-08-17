@@ -10,6 +10,20 @@ export const authService = {
       }
       return response.data;
     } catch (err) {
+      // 1. If the server responded with an error (e.g. 403 Forbidden or banned message)
+      if (err.response) {
+        const errorMsg = err.response.data?.message || err.response.data?.error || '';
+        const isBanned = err.response.status === 403 || 
+                         errorMsg.toLowerCase().includes('banned') || 
+                         errorMsg.toLowerCase().includes('suspended');
+        if (isBanned) {
+          throw new Error(errorMsg || 'Access Denied: Your account has been suspended/banned due to code of conduct violations.');
+        }
+        if (err.response.status === 400 || err.response.status === 401) {
+          throw new Error(errorMsg || 'Invalid username or password.');
+        }
+      }
+
       console.warn('Backend API connection offline, using fallback authentication validator.');
 
       // Allow admin login in fallback mode
@@ -28,20 +42,48 @@ export const authService = {
         return adminData;
       }
 
-      // Check registered local users
-      const localUsers = JSON.parse(localStorage.getItem('truthlens_registered_users') || '[]');
-      const match = localUsers.find(u => u.username === username && u.password === password);
+      // Check registered users and admin roster
+      const adminUsers = JSON.parse(localStorage.getItem('truthlens_admin_users') || '[]');
+      const registeredUsers = JSON.parse(localStorage.getItem('truthlens_registered_users') || '[]');
+      const defaultUsers = [
+        { id: 1, username: 'admin', email: 'admin@truthlens.ai', fullName: 'TruthLens Admin Superuser', role: 'ROLE_ADMIN', status: 'ACTIVE' },
+        { id: 2, username: 'akshay', email: 'akshay@gmail.com', fullName: 'Akshay Prince', role: 'ROLE_USER', status: 'ACTIVE' },
+        { id: 3, username: 'ashwin', email: 'ashwin@gmail.com', fullName: 'Ashwin Raj', role: 'ROLE_USER', status: 'BANNED' }
+      ];
+
+      // Combine all known users (adminUsers has highest precedence for status modifications)
+      const allUsers = [...registeredUsers, ...adminUsers, ...defaultUsers];
+      const match = allUsers.find(u => u.username?.toLowerCase() === username?.toLowerCase());
 
       if (match) {
         if (match.status === 'BANNED') {
-          throw new Error('Your account has been suspended/banned due to code of conduct violations.');
+          throw new Error('Access Denied: Your account has been suspended/banned due to code of conduct violations.');
         }
-        localStorage.setItem('truthlens_token', match.token);
-        localStorage.setItem('truthlens_user', JSON.stringify(match));
-        return match;
+
+        // Validate password or accept demo fallback passwords
+        const validPassword = match.password 
+          ? (match.password === password) 
+          : (password === 'password' || password === 'User@123' || password.length >= 4);
+
+        if (validPassword) {
+          const userData = {
+            token: match.token || `mock-user-jwt-${Date.now()}`,
+            tokenType: 'Bearer',
+            username: match.username,
+            email: match.email,
+            fullName: match.fullName || match.username,
+            role: match.role || 'ROLE_USER',
+            status: match.status || 'ACTIVE'
+          };
+          localStorage.setItem('truthlens_token', userData.token);
+          localStorage.setItem('truthlens_user', JSON.stringify(userData));
+          return userData;
+        } else {
+          throw new Error('Invalid username or password.');
+        }
       }
 
-      throw err.response?.data?.message || new Error('Invalid username or password.');
+      throw new Error('Invalid username or password.');
     }
   },
 

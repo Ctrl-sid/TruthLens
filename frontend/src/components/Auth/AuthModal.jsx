@@ -47,8 +47,30 @@ export default function AuthModal({ show, onClose }) {
           <form onSubmit={handleSubmit}>
             <div className="modal-body py-4">
               {error && (
-                <div className="alert alert-danger bg-danger bg-opacity-10 border-danger text-danger small mb-3">
-                  {error}
+                <div
+                  className={`alert small mb-3 d-flex align-items-start gap-2.5 rounded-3 ${
+                    error.toLowerCase().includes('banned') || error.toLowerCase().includes('suspended')
+                      ? 'bg-danger bg-opacity-20 border border-danger text-light'
+                      : 'bg-danger bg-opacity-10 border border-danger text-danger'
+                  }`}
+                >
+                  <i
+                    className={`bi fs-5 mt-0.5 ${
+                      error.toLowerCase().includes('banned') || error.toLowerCase().includes('suspended')
+                        ? 'bi-shield-x-fill text-danger'
+                        : 'bi-exclamation-triangle-fill text-danger'
+                    }`}
+                  ></i>
+                  <div>
+                    {error.toLowerCase().includes('banned') || error.toLowerCase().includes('suspended') ? (
+                      <>
+                        <strong className="d-block text-danger fw-bold mb-0.5">Account Suspended / Banned</strong>
+                        <span className="text-light opacity-90">{error}</span>
+                      </>
+                    ) : (
+                      <span>{error}</span>
+                    )}
+                  </div>
                 </div>
               )}
 
