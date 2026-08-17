@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Navbar from './components/Navbar';
 import HeroSection from './components/HeroSection';
 import TextInput from './components/InputTabs/TextInput';
@@ -36,6 +36,7 @@ function AppContent() {
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
 
   const [history, setHistory] = useState([]);
+  const prevUserRef = useRef(null);
 
   useEffect(() => {
     // Load isolated local user history
@@ -44,6 +45,16 @@ function AppContent() {
     } else {
       setHistory([]);
     }
+
+    // Direct Admin users to Imperial Command Center upon sign-in
+    const isAdmin = user && (user.role === 'ROLE_ADMIN' || user.username === 'admin');
+    const wasAdmin = prevUserRef.current && (prevUserRef.current.role === 'ROLE_ADMIN' || prevUserRef.current.username === 'admin');
+
+    if (isAdmin && !wasAdmin) {
+      setShowAdminDashboard(true);
+    }
+
+    prevUserRef.current = user;
   }, [user]);
 
   const handleVerify = async (type, content, title = '') => {
@@ -112,6 +123,27 @@ function AppContent() {
 
       <main className="flex-grow-1">
         <HeroSection />
+
+        {/* Account Warning Advisory Banner */}
+        {user && user.status === 'WARNED' && (
+          <div className="container mb-4">
+            <div className="alert alert-warning bg-warning bg-opacity-10 border-warning border-opacity-40 text-warning d-flex align-items-center justify-content-between rounded-3 py-2.5 px-3">
+              <div className="d-flex align-items-center gap-2">
+                <i className="bi bi-exclamation-triangle-fill fs-5 text-warning"></i>
+                <div className="small">
+                  <strong>Account Advisory (Status: WARNED):</strong> Your account is currently under code of conduct review. Please ensure queries and commentary comply with TruthLens community guidelines.
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-outline-warning btn-sm py-0.5 px-2.5 rounded-pill small text-nowrap"
+                onClick={() => setShowMessagingDrawer(true)}
+              >
+                Inquire Admin
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Input & Verification Workspace */}
         <section id="analyzer" className="container mb-5">
@@ -291,8 +323,34 @@ function AppContent() {
       <AdminDashboard
         show={showAdminDashboard}
         onClose={() => setShowAdminDashboard(false)}
-        onLaunchAnalyzer={() => document.getElementById('analyzer')?.scrollIntoView({ behavior: 'smooth' })}
+        onLaunchAnalyzer={() => {
+          setShowAdminDashboard(false);
+          setTimeout(() => {
+            const analyzerElem = document.getElementById('analyzer');
+            if (analyzerElem) {
+              analyzerElem.scrollIntoView({ behavior: 'smooth' });
+            }
+          }, 150);
+        }}
       />
+
+      {/* FLOATING QUICK-RETURN BUTTON FOR ADMINS */}
+      {user && (user.role === 'ROLE_ADMIN' || user.username === 'admin') && !showAdminDashboard && (
+        <div className="position-fixed bottom-0 end-0 m-4 z-3" style={{ zIndex: 1040 }}>
+          <button
+            className="btn btn-danger btn-lg rounded-pill shadow-lg d-flex align-items-center gap-2 border border-warning border-opacity-50 px-4 py-2.5"
+            style={{
+              background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)',
+              boxShadow: '0 8px 30px rgba(220, 38, 38, 0.45)'
+            }}
+            onClick={() => setShowAdminDashboard(true)}
+            title="Return to Superuser Command Center"
+          >
+            <i className="bi bi-shield-lock-fill text-warning fs-5"></i>
+            <span className="fw-bold text-white small tracking-wide">RETURN TO COMMAND CENTER</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

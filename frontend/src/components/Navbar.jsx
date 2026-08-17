@@ -62,18 +62,79 @@ export default function Navbar({ onOpenAuth, onOpenHistory, onOpenSources, onOpe
 
             {user ? (
               <div className="dropdown ms-1">
-                <button className="btn btn-dark btn-sm rounded-pill px-3 py-2 dropdown-toggle border border-white border-opacity-10 d-flex align-items-center gap-2" type="button" data-bs-toggle="dropdown">
-                  <i className="bi bi-person-circle text-cyan"></i>
-                  <span>{user.fullName || user.username}</span>
+                <button
+                  className="btn btn-dark btn-sm rounded-pill px-3 py-2 dropdown-toggle border border-white border-opacity-10 d-flex align-items-center gap-2"
+                  type="button"
+                  data-bs-toggle="dropdown"
+                >
+                  <div className="position-relative d-inline-flex align-items-center justify-content-center">
+                    <i className="bi bi-person-circle text-cyan fs-6"></i>
+                    <span
+                      className={`position-absolute top-0 start-100 translate-middle border border-dark rounded-circle ${
+                        user.status === 'WARNED' ? 'bg-warning' : (user.status === 'BANNED' ? 'bg-danger' : 'bg-success')
+                      }`}
+                      style={{ width: 8, height: 8 }}
+                      title={`Account Status: ${user.status || 'ACTIVE'}`}
+                    ></span>
+                  </div>
+                  <span className="d-none d-sm-inline fw-medium">{user.fullName || user.username}</span>
+                  <span
+                    className={`badge d-inline-flex align-items-center gap-1 px-2 py-0.5 small rounded-pill ${
+                      user.status === 'WARNED'
+                        ? 'bg-warning bg-opacity-20 text-warning border border-warning border-opacity-40'
+                        : user.status === 'BANNED'
+                        ? 'bg-danger bg-opacity-20 text-danger border border-danger border-opacity-40'
+                        : 'bg-success bg-opacity-20 text-success border border-success border-opacity-30'
+                    }`}
+                  >
+                    <span
+                      className={`rounded-circle ${
+                        user.status === 'WARNED' ? 'bg-warning' : (user.status === 'BANNED' ? 'bg-danger' : 'bg-success')
+                      }`}
+                      style={{ width: 6, height: 6 }}
+                    ></span>
+                    {user.status || 'ACTIVE'}
+                  </span>
                 </button>
-                <ul className="dropdown-menu dropdown-menu-dark dropdown-menu-end glass-card border-secondary">
-                  <li><span className="dropdown-item-text text-muted small">{user.email}</span></li>
-                  {isAdmin && (
-                    <li><span className="dropdown-item-text text-warning fw-bold small">🛡️ SUPERUSER ADMIN</span></li>
-                  )}
-                  <li><hr className="dropdown-divider border-secondary" /></li>
+                <ul className="dropdown-menu dropdown-menu-dark dropdown-menu-end glass-card border-secondary p-3 shadow-lg" style={{ minWidth: 270 }}>
+                  <li className="mb-2">
+                    <div className="fw-bold text-white fs-6">{user.fullName || user.username}</div>
+                    <span className="text-cyan small font-monospace">@{user.username}</span>
+                    <div className="text-muted small text-truncate">{user.email}</div>
+                  </li>
+                  <li className="mb-2">
+                    <div className="p-2.5 rounded bg-dark bg-opacity-60 border border-secondary border-opacity-30">
+                      <div className="d-flex justify-content-between align-items-center mb-1">
+                        <span className="small text-muted text-uppercase fw-semibold" style={{ fontSize: '0.72rem' }}>Account Status</span>
+                        <span
+                          className={`badge px-2 py-0.5 small rounded-pill ${
+                            user.status === 'WARNED'
+                              ? 'bg-warning bg-opacity-20 text-warning border border-warning border-opacity-40'
+                              : user.status === 'BANNED'
+                              ? 'bg-danger bg-opacity-20 text-danger border border-danger border-opacity-40'
+                              : 'bg-success bg-opacity-20 text-success border border-success border-opacity-30'
+                          }`}
+                        >
+                          {user.status || 'ACTIVE'}
+                        </span>
+                      </div>
+                      <div className="d-flex justify-content-between align-items-center">
+                        <span className="small text-muted text-uppercase fw-semibold" style={{ fontSize: '0.72rem' }}>Platform Standing</span>
+                        <span className="small text-light">
+                          {user.status === 'WARNED' ? '⚠️ Advisory Issued' : (user.status === 'BANNED' ? '⛔ Suspended' : '✅ Good Standing')}
+                        </span>
+                      </div>
+                      {isAdmin && (
+                        <div className="mt-1 pt-1 border-top border-secondary border-opacity-25 d-flex justify-content-between align-items-center">
+                          <span className="small text-warning fw-bold" style={{ fontSize: '0.72rem' }}>Privileges</span>
+                          <span className="badge bg-danger bg-opacity-30 text-warning border border-danger border-opacity-40 small">🛡️ SUPERUSER</span>
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                  <li><hr className="dropdown-divider border-secondary my-2" /></li>
                   <li>
-                    <button className="dropdown-item text-danger d-flex align-items-center gap-2" onClick={logout}>
+                    <button className="dropdown-item text-danger d-flex align-items-center gap-2 rounded px-2 py-1.5" onClick={logout}>
                       <i className="bi bi-box-arrow-right"></i> Sign Out
                     </button>
                   </li>

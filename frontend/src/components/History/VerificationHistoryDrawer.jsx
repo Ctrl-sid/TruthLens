@@ -17,9 +17,22 @@ export default function VerificationHistoryDrawer({ show, onClose, history, curr
         {currentUser ? (
           <>
             <div className="d-flex justify-content-between align-items-center mb-3 bg-dark bg-opacity-40 p-2.5 rounded border border-secondary border-opacity-25">
-              <span className="small text-muted">
-                Private history for <strong className="text-cyan font-monospace">@{currentUser.username}</strong>
-              </span>
+              <div className="d-flex align-items-center gap-1.5 small flex-wrap">
+                <span className="text-muted">History:</span>
+                <strong className="text-cyan font-monospace">@{currentUser.username}</strong>
+                <span
+                  className={`badge ms-1 px-2 py-0.5 small rounded-pill ${
+                    currentUser.status === 'WARNED'
+                      ? 'bg-warning bg-opacity-20 text-warning border border-warning border-opacity-40'
+                      : currentUser.status === 'BANNED'
+                      ? 'bg-danger bg-opacity-20 text-danger border border-danger border-opacity-40'
+                      : 'bg-success bg-opacity-20 text-success border border-success border-opacity-30'
+                  }`}
+                  style={{ fontSize: '0.68rem' }}
+                >
+                  {currentUser.status || 'ACTIVE'}
+                </span>
+              </div>
               {history && history.length > 0 && (
                 <button
                   type="button"

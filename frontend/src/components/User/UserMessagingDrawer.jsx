@@ -50,6 +50,28 @@ export default function UserMessagingDrawer({ show, onClose, currentUser }) {
       </div>
 
       <div className="offcanvas-body d-flex flex-column">
+        {/* User Account Status Indicator Header */}
+        {currentUser && (
+          <div className="d-flex justify-content-between align-items-center mb-3 bg-dark bg-opacity-50 p-2.5 rounded border border-secondary border-opacity-25 small">
+            <div className="d-flex align-items-center gap-2">
+              <i className="bi bi-person-circle text-cyan"></i>
+              <span className="text-white fw-semibold">{currentUser.fullName || currentUser.username}</span>
+              <span className="text-muted font-monospace">(@{currentUser.username})</span>
+            </div>
+            <span
+              className={`badge px-2 py-0.5 small rounded-pill ${
+                currentUser.status === 'WARNED'
+                  ? 'bg-warning bg-opacity-20 text-warning border border-warning border-opacity-40'
+                  : currentUser.status === 'BANNED'
+                  ? 'bg-danger bg-opacity-20 text-danger border border-danger border-opacity-40'
+                  : 'bg-success bg-opacity-20 text-success border border-success border-opacity-30'
+              }`}
+            >
+              Standing: {currentUser.status || 'ACTIVE'}
+            </span>
+          </div>
+        )}
+
         {/* Navigation - Hide compose tab if user is Admin */}
         <ul className="nav nav-pills mb-3 gap-2 border-bottom border-secondary border-opacity-25 pb-2">
           <li className="nav-item">

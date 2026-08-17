@@ -116,13 +116,17 @@ export default function AdminDashboard({ show, onClose, onLaunchAnalyzer }) {
             <div className="d-flex align-items-center gap-3">
               <button
                 type="button"
-                className="btn btn-outline-warning rounded-pill px-4 py-2 fw-semibold d-flex align-items-center gap-2"
+                className="btn btn-warning rounded-pill px-4 py-2 fw-bold text-dark d-flex align-items-center gap-2 shadow-sm"
+                style={{
+                  background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+                  border: '1px solid #FCD34D'
+                }}
                 onClick={() => {
                   onClose();
                   if (onLaunchAnalyzer) onLaunchAnalyzer();
                 }}
               >
-                <i className="bi bi-cpu-fill text-warning"></i>
+                <i className="bi bi-cpu-fill text-dark"></i>
                 <span>Launch News Credibility Analyzer</span>
               </button>
               <button type="button" className="btn-close btn-close-white fs-5" onClick={onClose}></button>
@@ -137,6 +141,34 @@ export default function AdminDashboard({ show, onClose, onLaunchAnalyzer }) {
               </div>
             ) : (
               <>
+                {/* DIRECT QUICK-LAUNCH BANNER TO NEWS ANALYZER */}
+                <div
+                  className="p-3 mb-4 rounded-3 d-flex flex-column flex-md-row justify-content-between align-items-center gap-3 border border-warning border-opacity-30"
+                  style={{ background: 'linear-gradient(90deg, rgba(245, 158, 11, 0.15) 0%, rgba(220, 38, 38, 0.15) 100%)' }}
+                >
+                  <div className="d-flex align-items-center gap-3">
+                    <div className="p-2.5 rounded-circle bg-warning bg-opacity-20 text-warning">
+                      <i className="bi bi-cpu fs-4"></i>
+                    </div>
+                    <div>
+                      <h6 className="fw-bold text-white mb-0">Live News Credibility & Fact-Checking Workspace</h6>
+                      <span className="small text-light opacity-75">Multi-modal AI scanning for text prompts, URLs, and OCR image forensics.</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-warning rounded-pill px-4 py-2 fw-bold text-dark d-flex align-items-center gap-2 text-nowrap shadow-sm"
+                    style={{ background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)', border: '1px solid #FCD34D' }}
+                    onClick={() => {
+                      onClose();
+                      if (onLaunchAnalyzer) onLaunchAnalyzer();
+                    }}
+                  >
+                    <i className="bi bi-arrow-up-right-circle-fill"></i>
+                    <span>Open Analyzer Tool</span>
+                  </button>
+                </div>
+
                 {/* SYSTEM TELEMETRY CARDS */}
                 <div className="row g-3 mb-4">
                   <div className="col-md-3">
