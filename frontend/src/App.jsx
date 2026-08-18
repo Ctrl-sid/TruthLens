@@ -26,7 +26,7 @@ function AppContent() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [activeResultTab, setActiveResultTab] = useState('nlp'); // nlp, sources, image
-  
+
   // Modals & Drawers
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
@@ -291,7 +291,7 @@ function AppContent() {
           </div>
 
           <span className="small text-muted">
-            Built with React, Spring Boot, Spring Security (JWT), PostgreSQL & Admin Gateway
+            All Right Reserved
           </span>
         </div>
       </footer>

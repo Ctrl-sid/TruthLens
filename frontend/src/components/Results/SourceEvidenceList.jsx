@@ -29,7 +29,11 @@ export default function SourceEvidenceList({ sources }) {
             <div className="text-sm-end">
               <span
                 className={`badge px-2 py-1 small rounded-pill fw-bold ${
-                  src.verdictBySource?.includes('True') || src.verdictBySource?.includes('Confirmed') ? 'bg-success bg-opacity-20 text-success' : 'bg-danger bg-opacity-20 text-danger'
+                  src.verdictBySource?.includes('True') || src.verdictBySource?.includes('Confirmed') || src.verdictBySource?.includes('Reference') || src.verdictBySource?.includes('Consensus')
+                    ? 'bg-success bg-opacity-20 text-success border border-success border-opacity-25'
+                    : src.verdictBySource?.includes('Unconfirmed') || src.verdictBySource?.includes('No Wire')
+                    ? 'bg-warning bg-opacity-20 text-warning border border-warning border-opacity-25'
+                    : 'bg-danger bg-opacity-20 text-danger border border-danger border-opacity-25'
                 }`}
               >
                 {src.verdictBySource}
