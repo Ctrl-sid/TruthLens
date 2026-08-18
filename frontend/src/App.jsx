@@ -16,6 +16,7 @@ import SampleNewsCarousel from './components/Presets/SampleNewsCarousel';
 import AuthModal from './components/Auth/AuthModal';
 import VerificationHistoryDrawer from './components/History/VerificationHistoryDrawer';
 import SourcesModal from './components/Sources/SourcesModal';
+import Footer from './components/Footer';
 import { verifyService } from './services/verifyService';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import confetti from 'canvas-confetti';
@@ -282,19 +283,17 @@ function AppContent() {
         </section>
       </main>
 
-      <footer className="glass-nav py-4 mt-auto border-top border-secondary border-opacity-25">
-        <div className="container d-flex flex-column flex-md-row justify-content-between align-items-center gap-3">
-          <div className="d-flex align-items-center gap-2">
-            <i className="bi bi-eye-fill text-cyan fs-5"></i>
-            <span className="fw-bold text-white brand-font">TruthLens</span>
-            <span className="small text-muted">— AI News Genuineness Verification Platform</span>
-          </div>
-
-          <span className="small text-muted">
-            All Right Reserved
-          </span>
-        </div>
-      </footer>
+      <Footer
+        onOpenAuth={() => setShowAuthModal(true)}
+        onOpenHistory={() => setShowHistoryDrawer(true)}
+        onOpenSources={() => setShowSourcesModal(true)}
+        onOpenMessages={() => {
+          if (!user) setShowAuthModal(true);
+          else setShowMessagingDrawer(true);
+        }}
+        onOpenAdmin={() => setShowAdminDashboard(true)}
+        onSelectPreset={handleSelectPreset}
+      />
 
       {/* Modals & Drawers */}
       <AuthModal show={showAuthModal} onClose={() => setShowAuthModal(false)} />
