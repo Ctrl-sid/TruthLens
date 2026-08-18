@@ -7,6 +7,16 @@ import java.util.*;
 @Component
 public class TfIdfVectoriser {
 
+    private static final Set<String> STOP_WORDS = Set.of(
+            "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with",
+            "by", "from", "up", "about", "into", "over", "after", "is", "are", "was", "were",
+            "be", "been", "being", "have", "has", "had", "do", "does", "did", "will", "would",
+            "shall", "should", "may", "might", "must", "can", "could", "that", "this", "these",
+            "those", "it", "its", "as", "if", "than", "because", "while", "where", "when", "how",
+            "all", "any", "both", "each", "few", "more", "most", "other", "some", "such", "no",
+            "nor", "not", "only", "own", "same", "so", "too", "very", "just"
+    );
+
     public Map<String, Double> createTfIdfVector(String text, List<String> corpus) {
         Map<String, Double> tfVector = calculateTermFrequency(text);
         Map<String, Double> tfIdfVector = new HashMap<>();
@@ -34,17 +44,21 @@ public class TfIdfVectoriser {
         Map<String, Double> tfMap = new HashMap<>();
         if (text == null || text.isBlank()) return tfMap;
 
-        String[] words = text.toLowerCase().replaceAll("[^a-z0-9\\s]", "").split("\\s+");
-        int totalWords = words.length;
+        String[] words = text.toLowerCase().replaceAll("[^a-z0-9\\s]", " ").split("\\s+");
+        int validWordCount = 0;
 
         for (String word : words) {
-            if (word.length() > 2) {
-                tfMap.put(word, tfMap.getOrDefault(word, 0.0) + 1.0);
+            String trimmed = word.trim();
+            if (trimmed.length() > 2 && !STOP_WORDS.contains(trimmed)) {
+                tfMap.put(trimmed, tfMap.getOrDefault(trimmed, 0.0) + 1.0);
+                validWordCount++;
             }
         }
 
-        for (Map.Entry<String, Double> entry : tfMap.entrySet()) {
-            tfMap.put(entry.getKey(), entry.getValue() / totalWords);
+        if (validWordCount > 0) {
+            for (Map.Entry<String, Double> entry : tfMap.entrySet()) {
+                tfMap.put(entry.getKey(), entry.getValue() / validWordCount);
+            }
         }
 
         return tfMap;

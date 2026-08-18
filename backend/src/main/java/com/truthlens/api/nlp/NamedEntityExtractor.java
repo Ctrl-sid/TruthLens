@@ -23,18 +23,18 @@ public class NamedEntityExtractor {
         Map<String, String> entityMap = new LinkedHashMap<>();
         if (text == null || text.isBlank()) return entityMap;
 
-        String upperText = text.toUpperCase();
-
-        // 1. Check Known Organizations
+        // 1. Check Known Organizations with word boundary regex
         for (String org : KNOWN_ORGS) {
-            if (upperText.contains(org)) {
+            Pattern p = Pattern.compile("\\b" + Pattern.quote(org) + "\\b", Pattern.CASE_INSENSITIVE);
+            if (p.matcher(text).find()) {
                 entityMap.put(org, "ORGANIZATION");
             }
         }
 
-        // 2. Check Known Scientific & News Concepts
+        // 2. Check Known Scientific & News Concepts with word boundary
         for (String concept : KNOWN_CONCEPTS) {
-            if (upperText.contains(concept)) {
+            Pattern p = Pattern.compile("\\b" + Pattern.quote(concept) + "\\b", Pattern.CASE_INSENSITIVE);
+            if (p.matcher(text).find()) {
                 entityMap.put(concept, "CONCEPT");
             }
         }
