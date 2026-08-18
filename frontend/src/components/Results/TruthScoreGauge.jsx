@@ -7,6 +7,36 @@ export default function TruthScoreGauge({ score, verdict, badgeColor }) {
   const circumference = normalizedRadius * 2 * Math.PI;
   const strokeDashoffset = circumference - (score / 100) * circumference;
 
+  const isNonVerifiable = verdict === 'NON-VERIFIABLE INPUT' || verdict?.includes('NON-VERIFIABLE');
+
+  if (isNonVerifiable) {
+    return (
+      <div className="text-center p-3 d-flex flex-column align-items-center justify-content-center h-100">
+        <div
+          className="rounded-circle d-flex align-items-center justify-content-center mb-3 shadow-lg"
+          style={{
+            width: 110,
+            height: 110,
+            background: 'rgba(100, 116, 139, 0.15)',
+            border: '2px dashed #64748B'
+          }}
+        >
+          <i className="bi bi-question-diamond-fill text-secondary fs-1"></i>
+        </div>
+
+        <span
+          className="badge px-3 py-1.5 fs-6 rounded-pill fw-bold text-uppercase mb-2"
+          style={{ backgroundColor: 'rgba(100, 116, 139, 0.25)', color: '#94A3B8', border: '1px solid #64748B' }}
+        >
+          <i className="bi bi-info-circle me-1"></i> Non-Verifiable Query
+        </span>
+        <p className="small text-muted mb-0" style={{ fontSize: '0.825rem' }}>
+          Input lacks a declarative factual assertion for wire cross-referencing.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="text-center p-3">
       <div className="position-relative d-inline-block">

@@ -5,6 +5,7 @@ import com.truthlens.api.dto.ClaimVerificationResponse;
 import com.truthlens.api.dto.ClaimVerificationResponse.SourceEvidence;
 import com.truthlens.api.dto.NlpAnalysisResponse;
 import com.truthlens.api.model.VerifiedSource;
+import com.truthlens.api.nlp.ClaimVerifiabilityValidator;
 import com.truthlens.api.nlp.FactCheckingCorpus;
 import com.truthlens.api.nlp.FactCheckingCorpus.CorpusEntry;
 import com.truthlens.api.nlp.FactCheckingCorpus.MatchResult;
@@ -29,6 +30,7 @@ public class FactCheckEngineService {
     private final FactCheckingCorpus factCheckingCorpus;
     private final ExternalFactCheckService externalFactCheckService;
     private final VerifiedSourceRepository verifiedSourceRepository;
+    private final ClaimVerifiabilityValidator claimVerifiabilityValidator;
 
     public ClaimVerificationResponse verifyClaim(ClaimVerificationRequest request) {
         String contentToAnalyze = request.getContent() != null ? request.getContent().trim() : "";
@@ -43,19 +45,39 @@ public class FactCheckEngineService {
             detectedDomain = extractDomainFromUrl(contentToAnalyze);
         }
 
-        // 2. Run NLP Pipeline
+        // 2. Pre-Check: Validate Claim Verifiability / Check-Worthiness
+        ClaimVerifiabilityValidator.ValidationResult validation = claimVerifiabilityValidator.validateClaimVerifiability(contentToAnalyze);
+        if (!validation.isVerifiableClaim()) {
+            NlpAnalysisResponse nlpResults = nlpPipelineService.processText(contentToAnalyze);
+            return ClaimVerificationResponse.builder()
+                    .id(System.currentTimeMillis())
+                    .inputType(request.getType() != null ? request.getType().toUpperCase() : "TEXT")
+                    .claimSummary("Non-Verifiable Input: '" + (contentToAnalyze.length() > 50 ? contentToAnalyze.substring(0, 47) + "..." : contentToAnalyze) + "'")
+                    .genuinenessScore(0)
+                    .verdict("NON-VERIFIABLE INPUT")
+                    .verdictBadgeColor("#64748B")
+                    .rationale("The submitted text does not constitute a declarative news claim with verifiable factual assertions. " + validation.getRejectionReason() + ".")
+                    .keyReasons(validation.getAdvisoryNotes())
+                    .sources(List.of())
+                    .nlpAnalysis(nlpResults)
+                    .imageAnalysis(imageAnalysis)
+                    .timestamp(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
+                    .build();
+        }
+
+        // 3. Run NLP Pipeline
         NlpAnalysisResponse nlpResults = nlpPipelineService.processText(contentToAnalyze);
 
-        // 3. Match against Fact-Checking Corpus using TF-IDF & Cosine Similarity
+        // 4. Match against Fact-Checking Corpus using TF-IDF & Cosine Similarity
         MatchResult corpusMatch = factCheckingCorpus.matchClaimAgainstCorpus(contentToAnalyze);
 
-        // 4. Query External Knowledge (if online & claim is not yet definitively matched)
+        // 5. Query External Knowledge (if online & claim is not yet definitively matched)
         Optional<ExternalFactCheckService.ExternalFactResult> externalFact = Optional.empty();
         if (corpusMatch.getTopSimilarity() < 0.65) {
             externalFact = externalFactCheckService.queryExternalKnowledge(contentToAnalyze);
         }
 
-        // 5. Check Domain Credibility if input is URL
+        // 6. Check Domain Credibility if input is URL
         VerifiedSource domainSource = null;
         if (detectedDomain != null) {
             domainSource = verifiedSourceRepository.findByDomain(detectedDomain.toLowerCase()).orElse(null);

@@ -34,6 +34,7 @@ public class FactCheckEngineServiceTest {
         NlpPipelineService nlpPipelineService = new NlpPipelineService(namedEntityExtractor, sentimentAnalyzer, clickbaitClassifier);
 
         OcrAnalysisService ocrAnalysisService = new OcrAnalysisService();
+        ClaimVerifiabilityValidator claimVerifiabilityValidator = new ClaimVerifiabilityValidator();
 
         verifiedSourceRepository = Mockito.mock(VerifiedSourceRepository.class);
         externalFactCheckService = Mockito.mock(ExternalFactCheckService.class);
@@ -44,8 +45,55 @@ public class FactCheckEngineServiceTest {
                 ocrAnalysisService,
                 factCheckingCorpus,
                 externalFactCheckService,
-                verifiedSourceRepository
+                verifiedSourceRepository,
+                claimVerifiabilityValidator
         );
+    }
+
+    @Test
+    @DisplayName("Interrogative Question Input should return NON-VERIFIABLE INPUT")
+    public void testQuestionInput() {
+        ClaimVerificationRequest request = ClaimVerificationRequest.builder()
+                .type("TEXT")
+                .content("what is this?")
+                .build();
+
+        ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
+
+        assertNotNull(response);
+        assertEquals("NON-VERIFIABLE INPUT", response.getVerdict());
+        assertEquals(0, response.getGenuinenessScore());
+        assertTrue(response.getRationale().toLowerCase().contains("does not constitute"));
+    }
+
+    @Test
+    @DisplayName("Single Word Input should return NON-VERIFIABLE INPUT")
+    public void testSingleWordInput() {
+        ClaimVerificationRequest request = ClaimVerificationRequest.builder()
+                .type("TEXT")
+                .content("apple")
+                .build();
+
+        ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
+
+        assertNotNull(response);
+        assertEquals("NON-VERIFIABLE INPUT", response.getVerdict());
+        assertEquals(0, response.getGenuinenessScore());
+    }
+
+    @Test
+    @DisplayName("Conversational Greeting should return NON-VERIFIABLE INPUT")
+    public void testGreetingInput() {
+        ClaimVerificationRequest request = ClaimVerificationRequest.builder()
+                .type("TEXT")
+                .content("hello how are you")
+                .build();
+
+        ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
+
+        assertNotNull(response);
+        assertEquals("NON-VERIFIABLE INPUT", response.getVerdict());
+        assertEquals(0, response.getGenuinenessScore());
     }
 
     @Test
