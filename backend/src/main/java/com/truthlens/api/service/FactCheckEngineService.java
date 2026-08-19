@@ -115,6 +115,22 @@ public class FactCheckEngineService {
                 .build();
     }
 
+    private boolean isEntityCompatible(NlpAnalysisResponse nlp, CorpusEntry entry) {
+        if (entry == null) return false;
+        if (nlp == null || nlp.getExtractedEntities() == null || nlp.getExtractedEntities().isEmpty()) return true;
+
+        String entryTextLower = entry.getText().toLowerCase();
+        // Check if at least one extracted entity (or word from entity) is present in the corpus entry
+        return nlp.getExtractedEntities().stream().anyMatch(entity -> {
+            String entityLower = entity.toLowerCase().trim();
+            if (entryTextLower.contains(entityLower)) return true;
+            for (String token : entityLower.split("\\s+")) {
+                if (token.length() > 3 && entryTextLower.contains(token)) return true;
+            }
+            return false;
+        });
+    }
+
     private int calculateGenuinenessScore(String text, NlpAnalysisResponse nlp,
                                          ClaimVerificationResponse.ImageIntegrityAnalysis imageAnalysis,
                                          MatchResult match,
@@ -126,19 +142,22 @@ public class FactCheckEngineService {
         double clickbaitRating = nlp.getClickbaitRating();
         double subjectivity = nlp.getSubjectivityScore();
 
+        boolean isVerifiedCompatible = isEntityCompatible(nlp, match.getBestVerifiedEntry());
+        boolean isDebunkedCompatible = isEntityCompatible(nlp, match.getBestDebunkedEntry());
+
         // 1. Digital Image Tampering Override
         if (imageAnalysis != null && imageAnalysis.getManipulationProbability() > 75) {
             return (int) Math.max(8, 25 - (imageAnalysis.getManipulationProbability() - 75));
         }
 
-        // 2. Strong Debunked / Hoax Match (TF-IDF Cosine Similarity > 0.40)
-        if (debunkedSim >= 0.40 && debunkedSim >= verifiedSim) {
+        // 2. Strong Debunked / Hoax Match (TF-IDF Cosine Similarity >= 0.45 AND Entity Compatible)
+        if (debunkedSim >= 0.45 && isDebunkedCompatible && debunkedSim >= verifiedSim) {
             int baseDebunkScore = (int) (28 - (debunkedSim * 20) - (clickbaitRating * 0.1));
             return Math.max(6, Math.min(24, baseDebunkScore));
         }
 
-        // 3. Strong Verified Fact Match (TF-IDF Cosine Similarity > 0.40)
-        if (verifiedSim >= 0.40 && verifiedSim > debunkedSim) {
+        // 3. Strong Verified Fact Match (TF-IDF Cosine Similarity >= 0.45 AND Entity Compatible)
+        if (verifiedSim >= 0.45 && isVerifiedCompatible && verifiedSim > debunkedSim) {
             int baseVerifiedScore = (int) (82 + (verifiedSim * 16) - (clickbaitRating * 0.15) - (subjectivity * 10));
             return Math.max(76, Math.min(98, baseVerifiedScore));
         }
@@ -163,7 +182,6 @@ public class FactCheckEngineService {
         }
 
         // 7. General Unverified Claim (No wire corroboration & no explicit debunk)
-        // Never default unverified claims to 90%! A realistic baseline is 42%-48% (Mixed / Unverified)
         int baseline = 46;
         double penalty = (clickbaitRating * 0.2) + (subjectivity * 18);
         int finalScore = (int) (baseline - penalty);
@@ -193,7 +211,7 @@ public class FactCheckEngineService {
         List<String> reasons = new ArrayList<>();
 
         if (score >= 75) {
-            if (match.getBestVerifiedEntry() != null && match.getVerifiedSimilarity() >= 0.40) {
+            if (match.getBestVerifiedEntry() != null && match.getVerifiedSimilarity() >= 0.45 && isEntityCompatible(nlp, match.getBestVerifiedEntry())) {
                 reasons.add("Corroborated by verified press wire archive: " + match.getBestVerifiedEntry().getArticleTitle());
             } else if (externalFact.isPresent()) {
                 reasons.add("Corroborated by verified public encyclopedia entry: " + externalFact.get().getTopic());
@@ -205,11 +223,11 @@ public class FactCheckEngineService {
             reasons.add("Extracted entities (" + String.join(", ", nlp.getExtractedEntities()) + ") align with official documentation.");
             reasons.add("Subjectivity index is low (" + (int)(nlp.getSubjectivityScore() * 100) + "%), showing neutral reporting tone.");
         } else if (score >= 50) {
-            reasons.add("Contains unverified assertions without independent confirmation from primary news agencies (Reuters, AP, BBC).");
+            reasons.add("Contains unverified assertions without independent confirmation from primary news agencies (Reuters, AP, BBC, PTI).");
             reasons.add("Moderate subjectivity (" + (int)(nlp.getSubjectivityScore() * 100) + "%) and lack of definitive documentary consensus.");
             reasons.add("Requires additional primary source evidence before accepting as verified fact.");
         } else {
-            if (match.getBestDebunkedEntry() != null && match.getDebunkedSimilarity() >= 0.40) {
+            if (match.getBestDebunkedEntry() != null && match.getDebunkedSimilarity() >= 0.45 && isEntityCompatible(nlp, match.getBestDebunkedEntry())) {
                 reasons.add("Direct match with documented hoax in fact-checking archives: '" + match.getBestDebunkedEntry().getArticleTitle() + "'");
             }
             if (nlp.getClickbaitRating() > 30) {
@@ -223,7 +241,7 @@ public class FactCheckEngineService {
             }
             if (reasons.isEmpty()) {
                 reasons.add("No corroborating reports found across Snopes, Reuters, or Associated Press fact-checking repositories.");
-                reasons.add("Displays unverified sensational claims with high risk of factual fabrication.");
+                reasons.add("High-impact assertion lacks official confirmation or accredited wire reporting.");
             }
         }
 
@@ -235,8 +253,11 @@ public class FactCheckEngineService {
                                       Optional<ExternalFactCheckService.ExternalFactResult> externalFact,
                                       VerifiedSource domainSource) {
         if (score >= 75) {
-            if (match.getBestVerifiedEntry() != null && match.getVerifiedSimilarity() >= 0.40) {
+            if (match.getBestVerifiedEntry() != null && match.getVerifiedSimilarity() >= 0.45 && isEntityCompatible(nlp, match.getBestVerifiedEntry())) {
                 return match.getBestVerifiedEntry().getRationale();
+            }
+            if (externalFact.isPresent()) {
+                return externalFact.get().getSnippet();
             }
             return "Our multi-layered verification engine cross-referenced this claim against international news wire archives and scientific repositories. " +
                    "The claim exhibits an objective tone (" + nlp.getToneAnalysis() + ") with confirmed factual grounding.";
@@ -244,11 +265,12 @@ public class FactCheckEngineService {
             return "This claim lacks independent confirmation across accredited wire services. While it does not match a known debunked hoax, " +
                    "it contains unverified assertions and requires corroboration from primary sources before it can be verified as genuine.";
         } else {
-            if (match.getBestDebunkedEntry() != null && match.getDebunkedSimilarity() >= 0.40) {
+            if (match.getBestDebunkedEntry() != null && match.getDebunkedSimilarity() >= 0.45 && isEntityCompatible(nlp, match.getBestDebunkedEntry())) {
                 return match.getBestDebunkedEntry().getRationale();
             }
-            return "TruthLens has evaluated this submission as " + verdict + ". The input displays high sensationalism (" + 
-                   (int)nlp.getClickbaitRating() + "%), unverified claims, and lacks corroboration from any accredited news wire or fact-checking organization.";
+            String entityStr = nlp.getExtractedEntities().isEmpty() ? "this claim" : String.join(", ", nlp.getExtractedEntities());
+            return "TruthLens has evaluated this submission as " + verdict + ". No corroborating reporting was found across primary news wires (Reuters, AP, BBC, PTI) for " +
+                   entityStr + ". High-impact public statements require official confirmation from accredited wire agencies.";
         }
     }
 
@@ -258,7 +280,7 @@ public class FactCheckEngineService {
         List<SourceEvidence> sources = new ArrayList<>();
 
         if (score >= 75) {
-            if (match.getBestVerifiedEntry() != null && match.getVerifiedSimilarity() >= 0.40) {
+            if (match.getBestVerifiedEntry() != null && match.getVerifiedSimilarity() >= 0.45 && isEntityCompatible(null, match.getBestVerifiedEntry())) {
                 CorpusEntry entry = match.getBestVerifiedEntry();
                 sources.add(SourceEvidence.builder()
                         .sourceName(entry.getSourceName())

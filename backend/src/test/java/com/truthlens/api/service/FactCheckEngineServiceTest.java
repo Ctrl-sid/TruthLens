@@ -232,4 +232,50 @@ public class FactCheckEngineServiceTest {
         assertTrue(response.getGenuinenessScore() >= 80, "Score should be >= 80, but was: " + response.getGenuinenessScore());
         assertTrue(response.getVerdict().contains("GENUINE"));
     }
+
+    @Test
+    @DisplayName("Question 'Did the Prime Minister pass away?' should return NON-VERIFIABLE INPUT")
+    public void testDidPrimeMinisterPassAwayQuestion() {
+        ClaimVerificationRequest request = ClaimVerificationRequest.builder()
+                .type("TEXT")
+                .content("Did the Prime Minister pass away?")
+                .build();
+
+        ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
+
+        assertNotNull(response);
+        assertEquals("NON-VERIFIABLE INPUT", response.getVerdict());
+        assertEquals(0, response.getGenuinenessScore());
+    }
+
+    @Test
+    @DisplayName("Verified Queen Elizabeth II passing should return VERIFIED GENUINE with score >= 80")
+    public void testQueenElizabethPassingVerified() {
+        ClaimVerificationRequest request = ClaimVerificationRequest.builder()
+                .type("TEXT")
+                .content("Queen Elizabeth II passed away at Balmoral on September 8, 2022")
+                .build();
+
+        ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
+
+        assertNotNull(response);
+        assertTrue(response.getGenuinenessScore() >= 80, "Score should be >= 80, but was: " + response.getGenuinenessScore());
+        assertTrue(response.getVerdict().contains("GENUINE"));
+    }
+
+    @Test
+    @DisplayName("Unverified rumor about PM Modi passing should NOT match Queen Elizabeth and should score <= 50")
+    public void testUnverifiedModiDeathRumor() {
+        ClaimVerificationRequest request = ClaimVerificationRequest.builder()
+                .type("TEXT")
+                .content("Indian PM Narendra Modi Passed away")
+                .build();
+
+        ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
+
+        assertNotNull(response);
+        assertTrue(response.getGenuinenessScore() <= 50, "Score must not be genuine, was: " + response.getGenuinenessScore());
+        assertFalse(response.getVerdict().contains("GENUINE"));
+        assertFalse(response.getRationale().toLowerCase().contains("queen elizabeth"), "Rationale must NOT contain Queen Elizabeth!");
+    }
 }

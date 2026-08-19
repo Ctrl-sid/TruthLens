@@ -221,7 +221,23 @@ public class FactCheckingCorpus {
                 "BBC News & WHO", "bbc.com", "https://www.bbc.com/news/health-66985273",
                 "WHO Recommends Oxford R21 Malaria Vaccine for High-Risk Regions",
                 "Large scale Phase 3 trials in African nations showed over 75% vaccine efficacy in reducing symptomatic malaria cases among infants and young children.",
-                List.of("oxford", "malaria", "vaccine", "r21", "who", "africa", "children", "immunization"));
+                List.of("oxford", "malaria", "r21", "immunization"));
+
+        addEntry("TRUE-008",
+                "Queen Elizabeth II passed away at Balmoral Castle on September 8 2022 confirmed by Buckingham Palace and international news wires",
+                "World History & Royalty", false, "Verified True",
+                "Reuters & BBC News", "bbc.com", "https://www.bbc.com/news/uk-61585886",
+                "Queen Elizabeth II: Britain's Longest-Reigning Monarch Dies at Balmoral Aged 96",
+                "Buckingham Palace and official state communiques confirmed Queen Elizabeth II died peacefully at Balmoral Castle on September 8, 2022, after 70 years on the throne.",
+                List.of("queen elizabeth", "elizabeth ii", "balmoral"));
+
+        addEntry("TRUE-009",
+                "World Health Organization officially declared COVID-19 coronavirus outbreak a global public health pandemic in March 2020",
+                "Public Health & History", false, "Verified True",
+                "World Health Organization (WHO)", "who.int", "https://www.who.int/emergencies/diseases/novel-coronavirus-2019",
+                "WHO Director-General Statement: COVID-19 Characterized as a Pandemic",
+                "The World Health Organization formally designated COVID-19 as a global pandemic on March 11, 2020, following rapid international transmission.",
+                List.of("who pandemic", "covid pandemic", "coronavirus pandemic"));
     }
 
     private void addEntry(String id, String text, String category, boolean isDebunkedFake,
@@ -260,12 +276,15 @@ public class FactCheckingCorpus {
             Map<String, Double> entryVector = tfIdfVectoriser.createTfIdfVector(entry.getText(), allCorpusTexts);
             double sim = cosineSimilarityEngine.computeCosineSimilarity(queryVector, entryVector);
 
-            // Keyword boost for high-salience terms
-            long keywordHits = entry.getKeywords().stream().filter(kw -> cleanQuery.contains(kw.toLowerCase())).count();
-            if (keywordHits >= 3) {
-                sim = Math.min(1.0, sim + 0.30);
-            } else if (keywordHits >= 2) {
-                sim = Math.min(1.0, sim + 0.18);
+            // Require specific distinctive keyword match to boost similarity
+            boolean hasDistinctiveKeyword = entry.getKeywords().stream()
+                    .anyMatch(kw -> cleanQuery.contains(kw.toLowerCase()));
+
+            if (hasDistinctiveKeyword && sim >= 0.25) {
+                sim = Math.min(1.0, sim + 0.35);
+            } else if (!hasDistinctiveKeyword) {
+                // If no distinctive topic keywords match, cap similarity to prevent unrelated verb overlaps
+                sim = Math.min(0.35, sim);
             }
 
             if (entry.isDebunkedFake()) {

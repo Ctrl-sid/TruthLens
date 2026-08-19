@@ -19,7 +19,7 @@ public class ClaimVerifiabilityValidator {
     );
 
     private static final Pattern INTERROGATIVE_START_PATTERN = Pattern.compile(
-            "^(what|who|why|where|when|how|is it true that|can you|could you|does|do|will|should|are there|is there)\\b",
+            "^(what|who|why|where|when|how|is|are|was|were|did|do|does|has|have|had|can|could|will|would|should|may|might|is it true that)\\b",
             Pattern.CASE_INSENSITIVE
     );
 
@@ -72,13 +72,13 @@ public class ClaimVerifiabilityValidator {
                     .build();
         }
 
-        // 3. Check for pure questions / inquiries without a declarative proposition
+        // 3. Check for questions / inquiries without a declarative proposition
         boolean isInterrogative = INTERROGATIVE_START_PATTERN.matcher(trimmed).find();
         boolean endsWithQuestion = trimmed.endsWith("?");
 
-        if ((isInterrogative && words.length <= 7) || (endsWithQuestion && words.length <= 4)) {
-            notes.add("Inquiries and questions ('What is...', 'Who is...') cannot be verified as true or false because they lack a declarative factual assertion.");
-            notes.add("Try rephrasing as a statement (e.g., instead of 'Is Earth flat?', enter 'The Earth is flat and guarded by ice wall').");
+        if (isInterrogative || endsWithQuestion) {
+            notes.add("Inquiries and questions ('Did the...', 'What is...', 'Is X...') cannot be verified as true or false because they lack a declarative factual assertion.");
+            notes.add("Try rephrasing as a declarative news statement or headline (e.g., instead of 'Did the Prime Minister pass away?', enter 'Prime Minister passed away according to official statement').");
             return ValidationResult.builder()
                     .isVerifiableClaim(false)
                     .rejectionReason("Interrogative question or inquiry (lacks declarative factual assertion)")

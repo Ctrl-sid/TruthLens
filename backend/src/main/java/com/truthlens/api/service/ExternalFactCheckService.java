@@ -41,17 +41,17 @@ public class ExternalFactCheckService {
         if (query == null || query.isBlank()) return Optional.empty();
 
         try {
-            // Clean up query terms for search
             String simplifiedQuery = cleanSearchQuery(query);
             if (simplifiedQuery.length() < 3) return Optional.empty();
 
             String encodedQuery = URLEncoder.encode(simplifiedQuery, StandardCharsets.UTF_8);
-            String url = "https://en.wikipedia.org/api/rest_v1/page/summary/" + encodedQuery;
+            // Use Wikipedia OpenSearch API for flexible natural language discovery
+            String url = "https://en.wikipedia.org/w/api.php?action=opensearch&search=" + encodedQuery + "&limit=1&namespace=0&format=json";
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .header("User-Agent", "TruthLens-FactCheckEngine/1.0 (contact@truthlens.ai)")
-                    .timeout(Duration.ofSeconds(2))
+                    .timeout(Duration.ofSeconds(3))
                     .GET()
                     .build();
 
@@ -59,26 +59,80 @@ public class ExternalFactCheckService {
 
             if (response.statusCode() == 200) {
                 String body = response.body();
-                String extract = extractJsonField(body, "extract");
-                String title = extractJsonField(body, "title");
-                String pageUrl = extractJsonField(body, "content_urls", "page");
+                // Format: ["query", ["Title"], ["Snippet / Extract"], ["URL"]]
+                List<String> titles = extractJsonArrayItems(body, 1);
+                List<String> snippets = extractJsonArrayItems(body, 2);
+                List<String> urls = extractJsonArrayItems(body, 3);
 
-                if (extract != null && !extract.isBlank() && !extract.toLowerCase().contains("may refer to")) {
+                if (!titles.isEmpty() && !snippets.isEmpty() && !snippets.get(0).isBlank()) {
+                    String title = titles.get(0);
+                    String snippet = snippets.get(0);
+                    String pageUrl = !urls.isEmpty() ? urls.get(0) : "https://en.wikipedia.org/wiki/" + URLEncoder.encode(title.replace(" ", "_"), StandardCharsets.UTF_8);
+
                     return Optional.of(ExternalFactResult.builder()
-                            .topic(title != null ? title : simplifiedQuery)
-                            .snippet(extract)
+                            .topic(title)
+                            .snippet(snippet)
                             .sourceName("Wikipedia Knowledge Archive")
-                            .sourceUrl(pageUrl != null ? pageUrl : "https://en.wikipedia.org/wiki/" + encodedQuery)
+                            .sourceUrl(pageUrl)
                             .isAuthenticCorroboration(true)
                             .build());
                 }
             }
         } catch (Exception e) {
-            // Graceful fallback to offline NLP corpus
-            log.debug("External knowledge lookup skipped or timed out: {}", e.getMessage());
+            log.debug("External knowledge lookup skipped: {}", e.getMessage());
         }
 
         return Optional.empty();
+    }
+
+    private List<String> extractJsonArrayItems(String json, int arrayIndex) {
+        List<String> results = new ArrayList<>();
+        try {
+            // Primitive parser for standard OpenSearch format: [query, [titles], [snippets], [urls]]
+            int currentArrayIndex = -1;
+            int depth = 0;
+            StringBuilder currentItem = null;
+            boolean inString = false;
+            boolean escaped = false;
+
+            for (int i = 0; i < json.length(); i++) {
+                char c = json.charAt(i);
+                if (escaped) {
+                    if (currentItem != null) currentItem.append(c);
+                    escaped = false;
+                    continue;
+                }
+                if (c == '\\') {
+                    escaped = true;
+                    continue;
+                }
+                if (c == '"') {
+                    inString = !inString;
+                    if (!inString && currentArrayIndex == arrayIndex && currentItem != null) {
+                        results.add(currentItem.toString());
+                        currentItem = null;
+                    } else if (inString && currentArrayIndex == arrayIndex) {
+                        currentItem = new StringBuilder();
+                    }
+                    continue;
+                }
+                if (!inString) {
+                    if (c == '[') {
+                        depth++;
+                        if (depth == 2) {
+                            currentArrayIndex++;
+                        }
+                    } else if (c == ']') {
+                        depth--;
+                    }
+                } else {
+                    if (currentArrayIndex == arrayIndex && currentItem != null) {
+                        currentItem.append(c);
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return results;
     }
 
     private String cleanSearchQuery(String query) {
