@@ -278,4 +278,114 @@ public class FactCheckEngineServiceTest {
         assertFalse(response.getVerdict().contains("GENUINE"));
         assertFalse(response.getRationale().toLowerCase().contains("queen elizabeth"), "Rationale must NOT contain Queen Elizabeth!");
     }
+
+    @Test
+    @DisplayName("Genuine news reported in The Hindu/wires 'Kolkata hotel fire kills 9 Bangladeshi nationals' should verify as genuine")
+    public void testKolkataHotelFireGenuineNews() {
+        ClaimVerificationRequest request = ClaimVerificationRequest.builder()
+                .type("TEXT")
+                .content("Kolkata hotel fire kills 9 Bangladeshi nationals")
+                .build();
+
+        ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
+
+        assertNotNull(response);
+        assertTrue(response.getGenuinenessScore() >= 75, "Genuine wire news should score >= 75, was: " + response.getGenuinenessScore());
+        assertTrue(response.getVerdict().contains("GENUINE"), "Verdict should contain GENUINE, was: " + response.getVerdict());
+    }
+
+    @Test
+    @DisplayName("Demographic impossibility 'there are 100 billion humans in earth' should be flagged as false/misleading")
+    public void testDemographicAnomalyPopulation() {
+        ClaimVerificationRequest request = ClaimVerificationRequest.builder()
+                .type("TEXT")
+                .content("there are 100 billion humans in earth")
+                .build();
+
+        ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
+
+        assertNotNull(response);
+        assertTrue(response.getGenuinenessScore() <= 35, "Score should be <= 35 for 100 billion humans, was: " + response.getGenuinenessScore());
+        assertFalse(response.getVerdict().contains("GENUINE"));
+        assertTrue(response.getRationale().toLowerCase().contains("8.1 billion") || response.getRationale().toLowerCase().contains("population"), "Rationale should explain demographic limit!");
+    }
+
+    @Test
+    @DisplayName("Image verification with explicit title should evaluate the explicit title")
+    public void testImageVerificationWithExplicitTitle() {
+        ClaimVerificationRequest request = ClaimVerificationRequest.builder()
+                .type("IMAGE")
+                .content("data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDcuresecretfake1234567890")
+                .title("Kolkata hotel fire kills 9 Bangladeshi nationals")
+                .build();
+
+        ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
+
+        assertNotNull(response);
+        assertTrue(response.getGenuinenessScore() >= 75, "Score should be >= 75 for verified title, was: " + response.getGenuinenessScore());
+        assertNotNull(response.getImageAnalysis());
+        assertFalse(response.getRationale().toLowerCase().contains("miracle cure"), "Must NOT trigger accidental miracle cure fallback!");
+    }
+
+    @Test
+    @DisplayName("Altered news 'massive fire in kolkata killed none' should be flagged as contradiction / fake")
+    public void testAlteredNewsContradictionKilledNone() {
+        ClaimVerificationRequest request = ClaimVerificationRequest.builder()
+                .type("TEXT")
+                .content("massive fire in kolkata killed none")
+                .build();
+
+        ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
+
+        assertNotNull(response);
+        assertTrue(response.getGenuinenessScore() <= 30, "Altered news with 0 casualties should score <= 30, was: " + response.getGenuinenessScore());
+        assertFalse(response.getVerdict().contains("GENUINE"), "Verdict must not be genuine!");
+        assertTrue(response.getRationale().toLowerCase().contains("contradict") || response.getRationale().toLowerCase().contains("none"), "Rationale should explain contradiction!");
+    }
+
+    @Test
+    @DisplayName("Genuine news 'massive fire in kolkata killed nine' should score >= 75")
+    public void testGenuineNewsKilledNine() {
+        ClaimVerificationRequest request = ClaimVerificationRequest.builder()
+                .type("TEXT")
+                .content("massive fire in kolkata killed nine")
+                .build();
+
+        ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
+
+        assertNotNull(response);
+        assertTrue(response.getGenuinenessScore() >= 75, "Genuine news should score >= 75, was: " + response.getGenuinenessScore());
+        assertTrue(response.getVerdict().contains("GENUINE"), "Verdict must be GENUINE!");
+    }
+
+    @Test
+    @DisplayName("News starting with WHO acronym should NOT be rejected as a non-verifiable question")
+    public void testWhoOrganizationAcronymNotRejected() {
+        ClaimVerificationRequest request = ClaimVerificationRequest.builder()
+                .type("TEXT")
+                .content("WHO approves updated malaria vaccine guidelines for high-transmission regions")
+                .build();
+
+        ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
+
+        assertNotNull(response);
+        assertNotEquals("NON-VERIFIABLE INPUT", response.getVerdict(), "WHO organization claim must not be rejected as a question!");
+        assertTrue(response.getGenuinenessScore() > 0, "Score should be calculated!");
+    }
+
+    @Test
+    @DisplayName("Valid URL input should NOT be rejected as input too short")
+    public void testUrlInputVerifiability() {
+        ClaimVerificationRequest request = ClaimVerificationRequest.builder()
+                .type("URL")
+                .content("https://www.reuters.com/world/science/nasa-james-webb-discovery")
+                .build();
+
+        ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
+
+        assertNotNull(response);
+        assertNotEquals("NON-VERIFIABLE INPUT", response.getVerdict(), "Valid URL input should not fail word-length validator!");
+    }
 }
+
+

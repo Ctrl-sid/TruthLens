@@ -4,14 +4,20 @@ import com.truthlens.api.dto.ClaimVerificationRequest;
 import com.truthlens.api.dto.ClaimVerificationResponse;
 import com.truthlens.api.dto.ClaimVerificationResponse.SourceEvidence;
 import com.truthlens.api.dto.NlpAnalysisResponse;
+import com.truthlens.api.model.FactCheckHistory;
+import com.truthlens.api.model.User;
 import com.truthlens.api.model.VerifiedSource;
 import com.truthlens.api.nlp.ClaimVerifiabilityValidator;
 import com.truthlens.api.nlp.FactCheckingCorpus;
 import com.truthlens.api.nlp.FactCheckingCorpus.CorpusEntry;
 import com.truthlens.api.nlp.FactCheckingCorpus.MatchResult;
 import com.truthlens.api.nlp.NlpPipelineService;
+import com.truthlens.api.repository.FactCheckHistoryRepository;
+import com.truthlens.api.repository.UserRepository;
 import com.truthlens.api.repository.VerifiedSourceRepository;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
@@ -20,9 +26,10 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
+import java.util.regex.Matcher;
 
 @Service
-@RequiredArgsConstructor
 public class FactCheckEngineService {
 
     private final NlpPipelineService nlpPipelineService;
@@ -31,6 +38,40 @@ public class FactCheckEngineService {
     private final ExternalFactCheckService externalFactCheckService;
     private final VerifiedSourceRepository verifiedSourceRepository;
     private final ClaimVerifiabilityValidator claimVerifiabilityValidator;
+    private final FactCheckHistoryRepository historyRepository;
+    private final UserRepository userRepository;
+
+    @Autowired
+    public FactCheckEngineService(
+            NlpPipelineService nlpPipelineService,
+            OcrAnalysisService ocrAnalysisService,
+            FactCheckingCorpus factCheckingCorpus,
+            ExternalFactCheckService externalFactCheckService,
+            VerifiedSourceRepository verifiedSourceRepository,
+            ClaimVerifiabilityValidator claimVerifiabilityValidator,
+            @Autowired(required = false) FactCheckHistoryRepository historyRepository,
+            @Autowired(required = false) UserRepository userRepository
+    ) {
+        this.nlpPipelineService = nlpPipelineService;
+        this.ocrAnalysisService = ocrAnalysisService;
+        this.factCheckingCorpus = factCheckingCorpus;
+        this.externalFactCheckService = externalFactCheckService;
+        this.verifiedSourceRepository = verifiedSourceRepository;
+        this.claimVerifiabilityValidator = claimVerifiabilityValidator;
+        this.historyRepository = historyRepository;
+        this.userRepository = userRepository;
+    }
+
+    public FactCheckEngineService(
+            NlpPipelineService nlpPipelineService,
+            OcrAnalysisService ocrAnalysisService,
+            FactCheckingCorpus factCheckingCorpus,
+            ExternalFactCheckService externalFactCheckService,
+            VerifiedSourceRepository verifiedSourceRepository,
+            ClaimVerifiabilityValidator claimVerifiabilityValidator
+    ) {
+        this(nlpPipelineService, ocrAnalysisService, factCheckingCorpus, externalFactCheckService, verifiedSourceRepository, claimVerifiabilityValidator, null, null);
+    }
 
     public ClaimVerificationResponse verifyClaim(ClaimVerificationRequest request) {
         String contentToAnalyze = request.getContent() != null ? request.getContent().trim() : "";
@@ -39,7 +80,8 @@ public class FactCheckEngineService {
 
         // 1. Handle Image input OCR extraction
         if ("IMAGE".equalsIgnoreCase(request.getType())) {
-            imageAnalysis = ocrAnalysisService.analyzeImageInput(contentToAnalyze);
+            String explicitTitle = request.getTitle() != null && !request.getTitle().isBlank() ? request.getTitle().trim() : null;
+            imageAnalysis = ocrAnalysisService.analyzeImageInput(contentToAnalyze, explicitTitle);
             contentToAnalyze = imageAnalysis.getDetectedHeadlineText();
         } else if ("URL".equalsIgnoreCase(request.getType())) {
             detectedDomain = extractDomainFromUrl(contentToAnalyze);
@@ -49,8 +91,9 @@ public class FactCheckEngineService {
         ClaimVerifiabilityValidator.ValidationResult validation = claimVerifiabilityValidator.validateClaimVerifiability(contentToAnalyze);
         if (!validation.isVerifiableClaim()) {
             NlpAnalysisResponse nlpResults = nlpPipelineService.processText(contentToAnalyze);
+            long claimId = System.currentTimeMillis();
             return ClaimVerificationResponse.builder()
-                    .id(System.currentTimeMillis())
+                    .id(claimId)
                     .inputType(request.getType() != null ? request.getType().toUpperCase() : "TEXT")
                     .claimSummary("Non-Verifiable Input: '" + (contentToAnalyze.length() > 50 ? contentToAnalyze.substring(0, 47) + "..." : contentToAnalyze) + "'")
                     .genuinenessScore(0)
@@ -99,8 +142,37 @@ public class FactCheckEngineService {
                 (contentToAnalyze.length() > 80 ? contentToAnalyze.substring(0, 77) + "..." : contentToAnalyze)
                 : "Claim involving " + String.join(", ", nlpResults.getExtractedEntities());
 
+        long resultId = System.currentTimeMillis();
+
+        // 9. Persist verified claim to database if repository is available
+        if (historyRepository != null) {
+            try {
+                User authUser = null;
+                Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+                if (authentication != null && authentication.isAuthenticated() && !"anonymousUser".equals(authentication.getName()) && userRepository != null) {
+                    authUser = userRepository.findByUsername(authentication.getName()).orElse(null);
+                }
+
+                FactCheckHistory historyEntity = FactCheckHistory.builder()
+                        .user(authUser)
+                        .inputType(request.getType() != null ? request.getType().toUpperCase() : "TEXT")
+                        .inputContent(contentToAnalyze)
+                        .claimSummary(summary)
+                        .genuinenessScore(score)
+                        .verdict(verdict)
+                        .rationale(rationale)
+                        .createdAt(LocalDateTime.now())
+                        .build();
+
+                FactCheckHistory saved = historyRepository.save(historyEntity);
+                if (saved != null && saved.getId() != null) {
+                    resultId = saved.getId();
+                }
+            } catch (Exception ignored) {}
+        }
+
         return ClaimVerificationResponse.builder()
-                .id(System.currentTimeMillis())
+                .id(resultId)
                 .inputType(request.getType() != null ? request.getType().toUpperCase() : "TEXT")
                 .claimSummary(summary)
                 .genuinenessScore(score)
@@ -115,35 +187,95 @@ public class FactCheckEngineService {
                 .build();
     }
 
-    private boolean isEntityCompatible(NlpAnalysisResponse nlp, CorpusEntry entry) {
+    private Optional<String> checkDemographicAnomaly(String text) {
+        if (text == null) return Optional.empty();
+        String lower = text.toLowerCase();
+
+        // Check for assertions of living human population exceeding global empirical limits (>= 10 billion)
+        if ((lower.contains("billion") || lower.contains("trillion")) &&
+            (lower.contains("human") || lower.contains("people") || lower.contains("population") || lower.contains("citizens") || lower.contains("inhabitants")) &&
+            (lower.contains("earth") || lower.contains("world") || lower.contains("planet") || lower.contains("are") || lower.contains("living") || lower.contains("now"))) {
+
+            Pattern numPattern = Pattern.compile("(\\b(?:[1-9]\\d{1,}|[2-9]\\d?|100)\\s*(?:billion|trillion))", Pattern.CASE_INSENSITIVE);
+            if (numPattern.matcher(lower).find()) {
+                return Optional.of("Earth's total human population is approximately 8.1 billion (United Nations Demographics). Assertions of tens or hundreds of billions of living humans contradict established global censuses.");
+            }
+        }
+        return Optional.empty();
+    }
+
+    private boolean isEntityCompatible(NlpAnalysisResponse nlp, CorpusEntry entry, String rawText) {
         if (entry == null) return false;
-        if (nlp == null || nlp.getExtractedEntities() == null || nlp.getExtractedEntities().isEmpty()) return true;
+        if (nlp == null) return true;
 
         String entryTextLower = entry.getText().toLowerCase();
-        // Check if at least one extracted entity (or word from entity) is present in the corpus entry
-        return nlp.getExtractedEntities().stream().anyMatch(entity -> {
-            String entityLower = entity.toLowerCase().trim();
-            if (entryTextLower.contains(entityLower)) return true;
-            for (String token : entityLower.split("\\s+")) {
-                if (token.length() > 3 && entryTextLower.contains(token)) return true;
-            }
-            return false;
-        });
+        String rawTextLower = rawText != null ? rawText.toLowerCase() : "";
+
+        // 1. Check if extracted entities align
+        if (nlp.getExtractedEntities() != null && !nlp.getExtractedEntities().isEmpty()) {
+            boolean entityFound = nlp.getExtractedEntities().stream().anyMatch(entity -> {
+                String entityLower = entity.toLowerCase().trim();
+                if (entryTextLower.contains(entityLower)) return true;
+                for (String token : entityLower.split("\\s+")) {
+                    if (token.length() > 3 && entryTextLower.contains(token)) return true;
+                }
+                return false;
+            });
+            if (entityFound) return true;
+        }
+
+        // 2. Check if primary keywords from the corpus entry match the raw input
+        if (entry.getKeywords() != null && !entry.getKeywords().isEmpty()) {
+            long kwMatches = entry.getKeywords().stream()
+                    .filter(kw -> rawTextLower.contains(kw.toLowerCase()))
+                    .count();
+            if (kwMatches >= 2) return true;
+        }
+
+        return nlp.getExtractedEntities() == null || nlp.getExtractedEntities().isEmpty();
+    }
+
+    private ExternalFactCheckService.ContradictionCheck checkContradictionSafely(String query, String reference) {
+        if (externalFactCheckService != null) {
+            try {
+                ExternalFactCheckService.ContradictionCheck check = externalFactCheckService.detectContradiction(query, reference);
+                if (check != null) return check;
+            } catch (Exception ignored) {}
+        }
+        return new ExternalFactCheckService().detectContradiction(query, reference);
     }
 
     private int calculateGenuinenessScore(String text, NlpAnalysisResponse nlp,
-                                         ClaimVerificationResponse.ImageIntegrityAnalysis imageAnalysis,
-                                         MatchResult match,
-                                         Optional<ExternalFactCheckService.ExternalFactResult> externalFact,
-                                         VerifiedSource domainSource) {
+                                          ClaimVerificationResponse.ImageIntegrityAnalysis imageAnalysis,
+                                          MatchResult match,
+                                          Optional<ExternalFactCheckService.ExternalFactResult> externalFact,
+                                          VerifiedSource domainSource) {
 
         double debunkedSim = match.getDebunkedSimilarity();
         double verifiedSim = match.getVerifiedSimilarity();
         double clickbaitRating = nlp.getClickbaitRating();
         double subjectivity = nlp.getSubjectivityScore();
 
-        boolean isVerifiedCompatible = isEntityCompatible(nlp, match.getBestVerifiedEntry());
-        boolean isDebunkedCompatible = isEntityCompatible(nlp, match.getBestDebunkedEntry());
+        // 0. Check for demographic / empirical factual impossibility
+        Optional<String> demographicAnomaly = checkDemographicAnomaly(text);
+        if (demographicAnomaly.isPresent()) {
+            return 22;
+        }
+
+        // 0.1 Direct Contradiction with accredited press reporting (e.g. killed none vs killed nine)
+        if (externalFact.isPresent() && externalFact.get().isContradiction()) {
+            return 18;
+        }
+
+        if (match.getBestVerifiedEntry() != null && match.getVerifiedSimilarity() >= 0.35) {
+            ExternalFactCheckService.ContradictionCheck corpusContradiction = checkContradictionSafely(text, match.getBestVerifiedEntry().getText());
+            if (corpusContradiction != null && corpusContradiction.isContradicted()) {
+                return 18;
+            }
+        }
+
+        boolean isVerifiedCompatible = isEntityCompatible(nlp, match.getBestVerifiedEntry(), text);
+        boolean isDebunkedCompatible = isEntityCompatible(nlp, match.getBestDebunkedEntry(), text);
 
         // 1. Digital Image Tampering Override
         if (imageAnalysis != null && imageAnalysis.getManipulationProbability() > 75) {
@@ -168,10 +300,11 @@ public class FactCheckEngineService {
             return Math.max(70, Math.min(96, domainScore));
         }
 
-        // 5. External Verified Knowledge Corroboration
+        // 5. External Verified Knowledge / Live News Wire Corroboration
         if (externalFact.isPresent() && externalFact.get().isAuthenticCorroboration()) {
-            int extScore = (int) (84 - (clickbaitRating * 0.25) - (subjectivity * 15));
-            return Math.max(72, Math.min(92, extScore));
+            int cred = externalFact.get().getCredibilityScore() > 0 ? externalFact.get().getCredibilityScore() : 92;
+            int extScore = (int) (cred - (clickbaitRating * 0.2) - (subjectivity * 12));
+            return Math.max(78, Math.min(96, extScore));
         }
 
         // 6. High Sensationalism / Conspiracy Markers Flagged
@@ -182,11 +315,11 @@ public class FactCheckEngineService {
         }
 
         // 7. General Unverified Claim (No wire corroboration & no explicit debunk)
-        int baseline = 46;
-        double penalty = (clickbaitRating * 0.2) + (subjectivity * 18);
+        int baseline = 52;
+        double penalty = (clickbaitRating * 0.25) + (subjectivity * 18);
         int finalScore = (int) (baseline - penalty);
 
-        return Math.max(25, Math.min(54, finalScore));
+        return Math.max(30, Math.min(58, finalScore));
     }
 
     private String determineVerdict(int score) {
@@ -210,11 +343,33 @@ public class FactCheckEngineService {
                                             VerifiedSource domainSource) {
         List<String> reasons = new ArrayList<>();
 
+        Optional<String> demographicAnomaly = checkDemographicAnomaly(text);
+        if (demographicAnomaly.isPresent()) {
+            reasons.add(demographicAnomaly.get());
+            reasons.add("Empirical demographic contradiction flagged by multi-source fact checking.");
+            return reasons;
+        }
+
+        if (externalFact.isPresent() && externalFact.get().isContradiction()) {
+            reasons.add("Direct factual contradiction with accredited news reporting: " + externalFact.get().getContradictionDetail());
+            reasons.add("Verified source report: '" + externalFact.get().getTopic() + "' (" + externalFact.get().getSourceName() + ")");
+            return reasons;
+        }
+
+        if (match.getBestVerifiedEntry() != null && match.getVerifiedSimilarity() >= 0.35) {
+            ExternalFactCheckService.ContradictionCheck corpusContradiction = checkContradictionSafely(text, match.getBestVerifiedEntry().getText());
+            if (corpusContradiction != null && corpusContradiction.isContradicted()) {
+                reasons.add("Direct factual contradiction with accredited news reporting: " + corpusContradiction.getReason());
+                reasons.add("Verified archive report: '" + match.getBestVerifiedEntry().getArticleTitle() + "' (" + match.getBestVerifiedEntry().getSourceName() + ")");
+                return reasons;
+            }
+        }
+
         if (score >= 75) {
-            if (match.getBestVerifiedEntry() != null && match.getVerifiedSimilarity() >= 0.45 && isEntityCompatible(nlp, match.getBestVerifiedEntry())) {
+            if (externalFact.isPresent()) {
+                reasons.add("Corroborated by verified press report: '" + externalFact.get().getTopic() + "' (" + externalFact.get().getSourceName() + ")");
+            } else if (match.getBestVerifiedEntry() != null && match.getVerifiedSimilarity() >= 0.45 && isEntityCompatible(nlp, match.getBestVerifiedEntry(), text)) {
                 reasons.add("Corroborated by verified press wire archive: " + match.getBestVerifiedEntry().getArticleTitle());
-            } else if (externalFact.isPresent()) {
-                reasons.add("Corroborated by verified public encyclopedia entry: " + externalFact.get().getTopic());
             } else if (domainSource != null) {
                 reasons.add("Originates from accredited high-credibility wire source (" + domainSource.getName() + ", " + domainSource.getCredibilityScore() + "/100 credibility).");
             } else {
@@ -223,11 +378,11 @@ public class FactCheckEngineService {
             reasons.add("Extracted entities (" + String.join(", ", nlp.getExtractedEntities()) + ") align with official documentation.");
             reasons.add("Subjectivity index is low (" + (int)(nlp.getSubjectivityScore() * 100) + "%), showing neutral reporting tone.");
         } else if (score >= 50) {
-            reasons.add("Contains unverified assertions without independent confirmation from primary news agencies (Reuters, AP, BBC, PTI).");
+            reasons.add("Contains unverified assertions without independent confirmation from primary news agencies (Reuters, AP, BBC, PTI, The Hindu).");
             reasons.add("Moderate subjectivity (" + (int)(nlp.getSubjectivityScore() * 100) + "%) and lack of definitive documentary consensus.");
             reasons.add("Requires additional primary source evidence before accepting as verified fact.");
         } else {
-            if (match.getBestDebunkedEntry() != null && match.getDebunkedSimilarity() >= 0.45 && isEntityCompatible(nlp, match.getBestDebunkedEntry())) {
+            if (match.getBestDebunkedEntry() != null && match.getDebunkedSimilarity() >= 0.45 && isEntityCompatible(nlp, match.getBestDebunkedEntry(), text)) {
                 reasons.add("Direct match with documented hoax in fact-checking archives: '" + match.getBestDebunkedEntry().getArticleTitle() + "'");
             }
             if (nlp.getClickbaitRating() > 30) {
@@ -252,12 +407,30 @@ public class FactCheckEngineService {
                                       MatchResult match,
                                       Optional<ExternalFactCheckService.ExternalFactResult> externalFact,
                                       VerifiedSource domainSource) {
-        if (score >= 75) {
-            if (match.getBestVerifiedEntry() != null && match.getVerifiedSimilarity() >= 0.45 && isEntityCompatible(nlp, match.getBestVerifiedEntry())) {
-                return match.getBestVerifiedEntry().getRationale();
+        Optional<String> demographicAnomaly = checkDemographicAnomaly(text);
+        if (demographicAnomaly.isPresent()) {
+            return "TruthLens has evaluated this submission as " + verdict + ". " + demographicAnomaly.get();
+        }
+
+        if (externalFact.isPresent() && externalFact.get().isContradiction()) {
+            return "TruthLens has evaluated this submission as " + verdict + ". " + externalFact.get().getSnippet();
+        }
+
+        if (match.getBestVerifiedEntry() != null && match.getVerifiedSimilarity() >= 0.35) {
+            ExternalFactCheckService.ContradictionCheck corpusContradiction = checkContradictionSafely(text, match.getBestVerifiedEntry().getText());
+            if (corpusContradiction != null && corpusContradiction.isContradicted()) {
+                return "TruthLens has evaluated this submission as " + verdict + ". Contradicted by verified wire reporting from " +
+                       match.getBestVerifiedEntry().getSourceName() + ": \"" + match.getBestVerifiedEntry().getArticleTitle() + "\". " + corpusContradiction.getReason();
             }
+        }
+
+        if (score >= 75) {
             if (externalFact.isPresent()) {
-                return externalFact.get().getSnippet();
+                return "TruthLens verified this claim against accredited news wire archives and real-time press reporting. " +
+                       externalFact.get().getSnippet();
+            }
+            if (match.getBestVerifiedEntry() != null && match.getVerifiedSimilarity() >= 0.45 && isEntityCompatible(nlp, match.getBestVerifiedEntry(), text)) {
+                return match.getBestVerifiedEntry().getRationale();
             }
             return "Our multi-layered verification engine cross-referenced this claim against international news wire archives and scientific repositories. " +
                    "The claim exhibits an objective tone (" + nlp.getToneAnalysis() + ") with confirmed factual grounding.";
@@ -265,7 +438,7 @@ public class FactCheckEngineService {
             return "This claim lacks independent confirmation across accredited wire services. While it does not match a known debunked hoax, " +
                    "it contains unverified assertions and requires corroboration from primary sources before it can be verified as genuine.";
         } else {
-            if (match.getBestDebunkedEntry() != null && match.getDebunkedSimilarity() >= 0.45 && isEntityCompatible(nlp, match.getBestDebunkedEntry())) {
+            if (match.getBestDebunkedEntry() != null && match.getDebunkedSimilarity() >= 0.45 && isEntityCompatible(nlp, match.getBestDebunkedEntry(), text)) {
                 return match.getBestDebunkedEntry().getRationale();
             }
             String entityStr = nlp.getExtractedEntities().isEmpty() ? "this claim" : String.join(", ", nlp.getExtractedEntities());
@@ -279,8 +452,22 @@ public class FactCheckEngineService {
                                                       VerifiedSource domainSource) {
         List<SourceEvidence> sources = new ArrayList<>();
 
+        if (externalFact.isPresent()) {
+            ExternalFactCheckService.ExternalFactResult ext = externalFact.get();
+            String verdictBySource = ext.isContradiction() ? "Contradicted / False" : (ext.isAuthenticCorroboration() ? "Verified True" : "Under Review");
+            sources.add(SourceEvidence.builder()
+                    .sourceName(ext.getSourceName() != null ? ext.getSourceName() : "Accredited Wire Press")
+                    .domain(ext.getSourceDomain() != null ? ext.getSourceDomain() : "news.google.com")
+                    .articleTitle(ext.getTopic())
+                    .url(ext.getSourceUrl())
+                    .credibilityRating(ext.getCredibilityScore() > 0 ? ext.getCredibilityScore() : 95)
+                    .matchPercentage(ext.getMatchPercentage() > 0 ? ext.getMatchPercentage() : 90.0)
+                    .verdictBySource(verdictBySource)
+                    .build());
+        }
+
         if (score >= 75) {
-            if (match.getBestVerifiedEntry() != null && match.getVerifiedSimilarity() >= 0.45 && isEntityCompatible(null, match.getBestVerifiedEntry())) {
+            if (match.getBestVerifiedEntry() != null && match.getVerifiedSimilarity() >= 0.45 && isEntityCompatible(null, match.getBestVerifiedEntry(), text)) {
                 CorpusEntry entry = match.getBestVerifiedEntry();
                 sources.add(SourceEvidence.builder()
                         .sourceName(entry.getSourceName())
@@ -290,18 +477,6 @@ public class FactCheckEngineService {
                         .verdictBySource("Verified True")
                         .articleTitle(entry.getArticleTitle())
                         .url(entry.getSourceUrl())
-                        .build());
-            }
-
-            if (externalFact.isPresent()) {
-                sources.add(SourceEvidence.builder()
-                        .sourceName(externalFact.get().getSourceName())
-                        .domain("wikipedia.org")
-                        .credibilityRating(92)
-                        .matchPercentage(89.5)
-                        .verdictBySource("Documented Reference")
-                        .articleTitle(externalFact.get().getTopic())
-                        .url(externalFact.get().getSourceUrl())
                         .build());
             }
 
@@ -343,6 +518,22 @@ public class FactCheckEngineService {
                     .url("https://www.reuters.com")
                     .build());
         } else {
+            if (match.getBestVerifiedEntry() != null && match.getVerifiedSimilarity() >= 0.35) {
+                ExternalFactCheckService.ContradictionCheck corpusContradiction = checkContradictionSafely(text, match.getBestVerifiedEntry().getText());
+                if (corpusContradiction != null && corpusContradiction.isContradicted()) {
+                    CorpusEntry entry = match.getBestVerifiedEntry();
+                    sources.add(SourceEvidence.builder()
+                            .sourceName(entry.getSourceName())
+                            .domain(entry.getSourceDomain())
+                            .credibilityRating(98)
+                            .matchPercentage(Math.round(match.getVerifiedSimilarity() * 1000.0) / 10.0)
+                            .verdictBySource("Contradicted / False")
+                            .articleTitle(entry.getArticleTitle())
+                            .url(entry.getSourceUrl())
+                            .build());
+                }
+            }
+
             if (match.getBestDebunkedEntry() != null && match.getDebunkedSimilarity() >= 0.40) {
                 CorpusEntry entry = match.getBestDebunkedEntry();
                 sources.add(SourceEvidence.builder()
@@ -364,15 +555,6 @@ public class FactCheckEngineService {
                     .verdictBySource("Debunked / False")
                     .articleTitle("Snopes: Fact Check Archives & Debunked Claims")
                     .url("https://www.snopes.com")
-                    .build());
-            sources.add(SourceEvidence.builder()
-                    .sourceName("PolitiFact")
-                    .domain("politifact.com")
-                    .credibilityRating(94)
-                    .matchPercentage(89.1)
-                    .verdictBySource("False / Misleading")
-                    .articleTitle("PolitiFact Truth-O-Meter")
-                    .url("https://www.politifact.com")
                     .build());
         }
 

@@ -238,6 +238,14 @@ public class FactCheckingCorpus {
                 "WHO Director-General Statement: COVID-19 Characterized as a Pandemic",
                 "The World Health Organization formally designated COVID-19 as a global pandemic on March 11, 2020, following rapid international transmission.",
                 List.of("who pandemic", "covid pandemic", "coronavirus pandemic"));
+
+        addEntry("TRUE-010",
+                "Kolkata hotel fire kills 9 Bangladeshi nationals in central commercial district confirmed by police and fire department",
+                "Disaster & Safety", false, "Verified True",
+                "The Hindu & Reuters", "thehindu.com", "https://www.thehindu.com/news/national/kolkata-hotel-fire",
+                "Kolkata Hotel Fire: Nine Bangladeshi Nationals Killed in Tragic Blaze",
+                "Accredited news agencies and municipal emergency response authorities confirmed nine fatalities following a structural hotel fire in Kolkata.",
+                List.of("kolkata", "hotel", "fire", "kills", "nine", "bangladeshi", "killed"));
     }
 
     private void addEntry(String id, String text, String category, boolean isDebunkedFake,

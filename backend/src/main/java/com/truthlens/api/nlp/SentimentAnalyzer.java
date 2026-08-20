@@ -47,7 +47,7 @@ public class SentimentAnalyzer {
             if (SUBJECTIVE_TRIGGER_WORDS.contains(token)) subjectiveCount++;
         }
 
-        double score = (double) subjectiveCount / Math.max(1, tokens.length / 10);
+        double score = (double) subjectiveCount / Math.max(1.0, tokens.length / 10.0);
         return Math.min(1.0, Math.max(0.1, score));
     }
 }

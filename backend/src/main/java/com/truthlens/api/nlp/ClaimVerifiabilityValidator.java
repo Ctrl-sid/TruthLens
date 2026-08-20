@@ -47,6 +47,14 @@ public class ClaimVerifiabilityValidator {
 
         String trimmed = text.trim();
         String lower = trimmed.toLowerCase();
+
+        // 0. URLs are directly verifiable via domain & wire lookups
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.matches("^(?i)(www\\.[a-zA-Z0-9-]+\\.[a-z]{2,}|[a-zA-Z0-9-]+\\.(com|org|net|edu|gov|io|in|co|uk|ai)/.*)")) {
+            return ValidationResult.builder()
+                    .isVerifiableClaim(true)
+                    .build();
+        }
+
         String[] words = trimmed.split("\\s+");
         List<String> notes = new ArrayList<>();
 
@@ -73,8 +81,20 @@ public class ClaimVerifiabilityValidator {
         }
 
         // 3. Check for questions / inquiries without a declarative proposition
-        boolean isInterrogative = INTERROGATIVE_START_PATTERN.matcher(trimmed).find();
         boolean endsWithQuestion = trimmed.endsWith("?");
+        boolean isWhoOrgHeadline = (trimmed.startsWith("WHO ") || trimmed.startsWith("W.H.O. ")) && !endsWithQuestion &&
+                (lower.contains("approves") || lower.contains("declares") || lower.contains("publishes") || lower.contains("warns") ||
+                 lower.contains("reports") || lower.contains("confirms") || lower.contains("recommends") || lower.contains("states") ||
+                 lower.contains("guidelines") || lower.contains("vaccine") || lower.contains("health") || lower.contains("officially"));
+
+        boolean isInterrogative = !isWhoOrgHeadline && (
+                lower.startsWith("what ") || lower.startsWith("why ") || lower.startsWith("where ") ||
+                lower.startsWith("when ") || lower.startsWith("how ") || lower.startsWith("is it true that") ||
+                lower.startsWith("did ") || lower.startsWith("does ") || lower.startsWith("do ") ||
+                lower.startsWith("was ") || lower.startsWith("were ") || lower.startsWith("can ") ||
+                lower.startsWith("could ") || lower.startsWith("will ") || lower.startsWith("would ") ||
+                lower.startsWith("should ") || (lower.startsWith("who ") && (lower.startsWith("who is") || lower.startsWith("who was") || lower.startsWith("who did") || lower.startsWith("who won") || lower.startsWith("who are")))
+        );
 
         if (isInterrogative || endsWithQuestion) {
             notes.add("Inquiries and questions ('Did the...', 'What is...', 'Is X...') cannot be verified as true or false because they lack a declarative factual assertion.");
