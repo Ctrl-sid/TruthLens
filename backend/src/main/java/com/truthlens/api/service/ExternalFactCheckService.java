@@ -121,6 +121,36 @@ public class ExternalFactCheckService {
                     continue;
                 }
 
+                // Verify predicate action alignment: if query alleges death/arrest, headline must also report that event
+                String qLower = originalQuery.toLowerCase();
+                String tLower = title.toLowerCase();
+
+                boolean queryClaimsDeath = qLower.contains("passed away") || qLower.contains("died") || qLower.contains("dead") || qLower.contains("killed") || qLower.contains("death") || qLower.contains("assassinated");
+                if (queryClaimsDeath) {
+                    // If headline states subject "mourns", "saddened by", "condoles", "pays tribute", "reacts to death":
+                    // The subject is issuing condolences, which proves the subject is alive!
+                    boolean subjectIsMourningSomeoneElse = tLower.contains("saddened by") || tLower.contains("mourns") || 
+                                                           tLower.contains("condoles") || tLower.contains("pays tribute") || 
+                                                           tLower.contains("condolence") || tLower.contains("grieves") || 
+                                                           tLower.contains("reacts to death");
+                    if (subjectIsMourningSomeoneElse) {
+                        continue; // Subject is alive and mourning someone else!
+                    }
+
+                    boolean titleMentionsDeath = tLower.contains("passed away") || tLower.contains("dies") || tLower.contains("dead") || tLower.contains("killed") || tLower.contains("death of") || tLower.contains("obituary") || tLower.contains("assassinated");
+                    if (!titleMentionsDeath) {
+                        continue; // Headline does not report the alleged death!
+                    }
+                }
+
+                boolean queryClaimsArrest = qLower.contains("arrested") || qLower.contains("detained") || qLower.contains("jailed") || qLower.contains("indicted");
+                if (queryClaimsArrest) {
+                    boolean titleMentionsArrest = tLower.contains("arrested") || tLower.contains("detained") || tLower.contains("jailed") || tLower.contains("indicted") || tLower.contains("charges");
+                    if (!titleMentionsArrest) {
+                        continue;
+                    }
+                }
+
                 double overlap = calculateQueryArticleOverlap(originalQuery, title);
                 if (overlap > bestOverlap) {
                     bestOverlap = overlap;
@@ -315,15 +345,17 @@ public class ExternalFactCheckService {
                     String snippet = snippets.get(0);
                     String pageUrl = !urls.isEmpty() ? urls.get(0) : "https://en.wikipedia.org/wiki/" + URLEncoder.encode(title.replace(" ", "_"), StandardCharsets.UTF_8);
 
+                    boolean corroborates = doesWikipediaCorroborateClaim(query, title, snippet);
+
                     return Optional.of(ExternalFactResult.builder()
                             .topic(title)
                             .snippet(snippet)
                             .sourceName("Wikipedia Knowledge Archive")
                             .sourceDomain("wikipedia.org")
                             .sourceUrl(pageUrl)
-                            .isAuthenticCorroboration(true)
+                            .isAuthenticCorroboration(corroborates)
                             .credibilityScore(94)
-                            .matchPercentage(90.0)
+                            .matchPercentage(corroborates ? 90.0 : 40.0)
                             .build());
                 }
             }
@@ -331,6 +363,34 @@ public class ExternalFactCheckService {
             log.debug("Wikipedia knowledge lookup skipped: {}", e.getMessage());
         }
         return Optional.empty();
+    }
+
+    private boolean doesWikipediaCorroborateClaim(String query, String title, String snippet) {
+        if (snippet == null || snippet.isBlank()) return false;
+        String sLower = snippet.toLowerCase();
+        String qLower = query.toLowerCase();
+
+        // 1. Death / Passing assertion
+        boolean claimsDeath = qLower.contains("passed away") || qLower.contains("died") || 
+                              qLower.contains("dead") || qLower.contains("assassinated") || 
+                              qLower.contains("killed") || qLower.contains("death");
+        if (claimsDeath) {
+            boolean snippetConfirmsDeath = sLower.contains("died") || sLower.contains("death") || 
+                                          sLower.contains("passed away") || sLower.contains("assassinated") || 
+                                          sLower.contains("killed") || sLower.matches(".*\\(\\d{4}\\s*[-–—]\\s*\\d{4}\\).*");
+            if (!snippetConfirmsDeath) {
+                return false;
+            }
+        }
+
+        // 2. Cure / Miracle claim
+        boolean claimsCure = qLower.contains("cure") || qLower.contains("cures") || qLower.contains("miracle");
+        if (claimsCure && !sLower.contains("cure") && !sLower.contains("therapy") && !sLower.contains("approved")) {
+            return false;
+        }
+
+        // 3. Significant token overlap
+        return calculateQueryArticleOverlap(query, title + " " + snippet) >= 0.30;
     }
 
     private double calculateQueryArticleOverlap(String query, String articleTitle) {
