@@ -3,6 +3,7 @@ package com.truthlens.api.controller;
 import com.truthlens.api.dto.ClaimFeedbackDTO;
 import com.truthlens.api.dto.MessageDTO;
 import com.truthlens.api.service.MessagingService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -20,7 +21,7 @@ public class MessagingController {
 
     @PostMapping("/messages")
     public ResponseEntity<MessageDTO.MessageResponse> sendMessageToAdmin(
-            @RequestBody MessageDTO.SendMessageRequest request,
+            @Valid @RequestBody MessageDTO.SendMessageRequest request,
             Authentication authentication
     ) {
         String username = authentication != null ? authentication.getName() : "anonymousUser";
@@ -35,7 +36,7 @@ public class MessagingController {
 
     @PostMapping("/feedback")
     public ResponseEntity<ClaimFeedbackDTO.FeedbackResponse> submitFeedback(
-            @RequestBody ClaimFeedbackDTO.SubmitFeedbackRequest request,
+            @Valid @RequestBody ClaimFeedbackDTO.SubmitFeedbackRequest request,
             Authentication authentication
     ) {
         String username = authentication != null ? authentication.getName() : "anonymousUser";

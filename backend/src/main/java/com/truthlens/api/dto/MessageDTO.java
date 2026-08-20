@@ -1,5 +1,6 @@
 package com.truthlens.api.dto;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -13,8 +14,13 @@ public class MessageDTO {
     public static class SendMessageRequest {
         private String recipientUsername; // optional if sending to admin
         private Long claimId;
+
+        @NotBlank(message = "Subject is required")
         private String subject;
+
+        @NotBlank(message = "Message text is required")
         private String messageText;
+
         private String claimContextSummary;
     }
 

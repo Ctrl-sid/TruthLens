@@ -49,6 +49,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/verify/**").permitAll()
                         .requestMatchers("/api/sources/**").permitAll()
                         .requestMatchers("/api/presets/**").permitAll()
+                        .requestMatchers("/api/nlp/**").permitAll()
+                        .requestMatchers("/api/history/**").permitAll()
                         .requestMatchers("/api/admin/**").hasAuthority("ROLE_ADMIN")
                         .requestMatchers("/api/user/**").authenticated()
                         .requestMatchers("/h2-console/**").permitAll()

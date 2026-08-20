@@ -15,7 +15,21 @@ public class NlpController {
     private final NlpPipelineService nlpPipelineService;
 
     @PostMapping("/analyze")
-    public ResponseEntity<NlpAnalysisResponse> analyzeText(@RequestBody String text) {
-        return ResponseEntity.ok(nlpPipelineService.processText(text));
+    public ResponseEntity<NlpAnalysisResponse> analyzeText(@RequestBody(required = false) String text) {
+        String clean = text != null ? text.trim() : "";
+        if (clean.startsWith("{") && clean.contains("\"text\"")) {
+            int idx = clean.indexOf("\"text\"");
+            int colon = clean.indexOf(":", idx);
+            if (colon != -1) {
+                int firstQuote = clean.indexOf("\"", colon);
+                int lastQuote = clean.lastIndexOf("\"");
+                if (firstQuote != -1 && lastQuote > firstQuote) {
+                    clean = clean.substring(firstQuote + 1, lastQuote);
+                }
+            }
+        } else if (clean.startsWith("\"") && clean.endsWith("\"") && clean.length() >= 2) {
+            clean = clean.substring(1, clean.length() - 1);
+        }
+        return ResponseEntity.ok(nlpPipelineService.processText(clean));
     }
 }
