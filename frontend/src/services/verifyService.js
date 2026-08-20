@@ -61,25 +61,37 @@ export const verifyService = {
 function simulateClientVerification(type, content) {
   const upper = (content || '').toUpperCase();
 
-  let score = 88;
-  let verdict = 'MOSTLY GENUINE';
-  let badgeColor = '#10B981';
-  let isFake = false;
+  const isObviousHoax = upper.includes('CURE') || upper.includes('MIRACLE') || upper.includes('DOCTORS HATE') ||
+    upper.includes('DEEPFAKE') || upper.includes('LEAKED') || upper.includes('SECRET PLAN') ||
+    upper.includes('FLAT EARTH') || upper.includes('BLEACH') || upper.includes('SHOCKING SECRET') ||
+    upper.includes('ERASED BY FRIDAY');
 
-  if (upper.includes('CURE') || upper.includes('MIRACLE') || upper.includes('DOCTORS HATE')) {
-    score = 18;
+  const isVerifiedFact = upper.includes('WEBB') || upper.includes('NASA') || upper.includes('EXOPLANET') ||
+    upper.includes('WORLD HEALTH ORGANIZATION') || upper.includes('WHO APPROVES') || upper.includes('PANDEMIC') ||
+    upper.includes('CRISPR') || upper.includes('GENE-EDITING') || upper.includes('KOLKATA HOTEL FIRE');
+
+  let score = 52;
+  let verdict = 'MIXED / UNVERIFIED';
+  let badgeColor = '#F59E0B';
+
+  if (isObviousHoax) {
+    score = 16;
     verdict = 'FABRICATED / FAKE';
     badgeColor = '#EF4444';
-    isFake = true;
-  } else if (upper.includes('DEEPFAKE') || upper.includes('LEAKED') || upper.includes('SECRET PLAN')) {
-    score = 24;
-    verdict = 'LIKELY MISLEADING';
-    badgeColor = '#EF4444';
-    isFake = true;
-  } else if (upper.includes('WEBB') || upper.includes('NASA') || upper.includes('EXOPLANET')) {
-    score = 96;
+  } else if (isVerifiedFact) {
+    score = 92;
     verdict = 'VERIFIED GENUINE';
     badgeColor = '#10B981';
+  }
+
+  const isFake = score < 50;
+  const isGenuine = score >= 75;
+
+  let rationale = 'This claim contains unverified assertions without independent confirmation from primary wire agencies. It requires primary source evidence before it can be verified as genuine.';
+  if (isFake) {
+    rationale = 'This claim exhibits sensationalist triggers, unverified promises, and directly matches documented hoaxes or lacks corroboration from accredited agencies.';
+  } else if (isGenuine) {
+    rationale = 'Cross-referenced against international wire archives and scientific databases. The claim displays neutral tone and aligns with verified primary reports.';
   }
 
   return {
@@ -89,32 +101,37 @@ function simulateClientVerification(type, content) {
     genuinenessScore: score,
     verdict: verdict,
     verdictBadgeColor: badgeColor,
-    rationale: isFake ?
-      'This claim exhibits extreme sensationalism, unverified health or financial promises, and lacks backing from any recognized news or scientific agency.' :
-      'Cross-referenced against international wire archives and scientific databases. The claim displays neutral tone and aligns with verified primary reports.',
+    rationale: rationale,
     keyReasons: isFake ? [
       'Contains high sensationalism index & emotional triggers.',
       'No corroborating records found in Reuters, AP News, or Snopes repositories.',
       'Flags for speculative or manipulative language.'
-    ] : [
+    ] : (isGenuine ? [
       'Matches official press releases from accredited organizations.',
       'High domain consensus rating across fact-checking networks.',
       'Objective tone with verified named entity references.'
-    ],
+    ] : [
+      'Contains unverified assertions without independent wire corroboration.',
+      'Moderate subjectivity and lack of primary documentary evidence.',
+      'Requires independent verification before accepting as genuine fact.'
+    ]),
     sources: isFake ? [
       { sourceName: 'Snopes Fact Check', domain: 'snopes.com', credibilityRating: 95, matchPercentage: 92.4, verdictBySource: 'Debunked / False', url: 'https://www.snopes.com' },
       { sourceName: 'PolitiFact', domain: 'politifact.com', credibilityRating: 94, matchPercentage: 88.0, verdictBySource: 'False', url: 'https://www.politifact.com' }
-    ] : [
+    ] : (isGenuine ? [
       { sourceName: 'Reuters Fact Check', domain: 'reuters.com', credibilityRating: 98, matchPercentage: 96.5, verdictBySource: 'Verified True', url: 'https://www.reuters.com/fact-check' },
       { sourceName: 'Associated Press', domain: 'apnews.com', credibilityRating: 97, matchPercentage: 94.2, verdictBySource: 'Verified True', url: 'https://apnews.com/ap-fact-check' }
-    ],
+    ] : [
+      { sourceName: 'Reuters Wire Archive', domain: 'reuters.com', credibilityRating: 98, matchPercentage: 45.0, verdictBySource: 'Unconfirmed / No Wire Match', url: 'https://www.reuters.com' },
+      { sourceName: 'AP News Archive', domain: 'apnews.com', credibilityRating: 97, matchPercentage: 42.0, verdictBySource: 'Unconfirmed / No Wire Match', url: 'https://apnews.com' }
+    ]),
     nlpAnalysis: {
-      extractedEntities: upper.includes('NASA') ? ['NASA', 'James Webb Telescope', 'Exoplanet'] : ['Global Science Council'],
-      entityCategories: { 'NASA': 'ORGANIZATION', 'Exoplanet': 'ASTRONOMY' },
-      sentimentScore: isFake ? -0.45 : 0.25,
-      subjectivityScore: isFake ? 0.85 : 0.15,
-      clickbaitRating: isFake ? 85.0 : 12.0,
-      toneAnalysis: isFake ? 'High Sensationalism & Hyperbolic Clickbait' : 'Objective & Informative',
+      extractedEntities: isVerifiedFact ? ['Accredited Wire Organization'] : ['Unverified Entity'],
+      entityCategories: { 'Accredited Wire Organization': 'ORGANIZATION' },
+      sentimentScore: isFake ? -0.45 : (isGenuine ? 0.25 : 0.0),
+      subjectivityScore: isFake ? 0.85 : (isGenuine ? 0.15 : 0.45),
+      clickbaitRating: isFake ? 85.0 : (isGenuine ? 12.0 : 35.0),
+      toneAnalysis: isFake ? 'High Sensationalism & Hyperbolic Clickbait' : (isGenuine ? 'Objective & Informative' : 'Neutral / Uncorroborated'),
       readabilityScore: 82,
       exaggerationFlags: isFake ? ['Sensational Trigger Words', 'Excessive Punctuation'] : []
     },

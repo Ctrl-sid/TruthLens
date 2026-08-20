@@ -28,15 +28,23 @@ export default function AdminDashboard({ show, onClose, onLaunchAnalyzer }) {
 
   const loadAllAdminData = async () => {
     setLoading(true);
-    const [uData, mData, fData] = await Promise.all([
-      adminService.getUsers(),
-      adminService.getAdminInbox(),
-      adminService.getAllClaimFeedback()
-    ]);
-    setUsers(uData);
-    setMessages(mData);
-    setFeedback(fData);
-    setLoading(false);
+    try {
+      const [uData, mData, fData] = await Promise.all([
+        adminService.getUsers(),
+        adminService.getAdminInbox(),
+        adminService.getAllClaimFeedback()
+      ]);
+      setUsers(Array.isArray(uData) ? uData : []);
+      setMessages(Array.isArray(mData) ? mData : []);
+      setFeedback(Array.isArray(fData) ? fData : []);
+    } catch (err) {
+      console.error('Failed to load admin data:', err);
+      setUsers([]);
+      setMessages([]);
+      setFeedback([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleUpdateStatus = async (e) => {

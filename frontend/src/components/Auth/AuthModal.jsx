@@ -33,6 +33,11 @@ export default function AuthModal({ show, onClose }) {
     }
   };
 
+  const toggleMode = () => {
+    setIsRegister(!isRegister);
+    setError('');
+  };
+
   return (
     <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(8px)' }} tabIndex="-1">
       <div className="modal-dialog modal-dialog-centered">
@@ -62,14 +67,12 @@ export default function AuthModal({ show, onClose }) {
                     }`}
                   ></i>
                   <div>
-                    {error.toLowerCase().includes('banned') || error.toLowerCase().includes('suspended') ? (
-                      <>
-                        <strong className="d-block text-danger fw-bold mb-0.5">Account Suspended / Banned</strong>
-                        <span className="text-light opacity-90">{error}</span>
-                      </>
-                    ) : (
-                      <span>{error}</span>
-                    )}
+                    <div className="fw-semibold">
+                      {error.toLowerCase().includes('banned') || error.toLowerCase().includes('suspended')
+                        ? 'Account Suspended'
+                        : 'Authentication Notice'}
+                    </div>
+                    <div className="opacity-90">{error}</div>
                   </div>
                 </div>
               )}
@@ -80,10 +83,9 @@ export default function AuthModal({ show, onClose }) {
                   <input
                     type="text"
                     className="form-control form-control-dark"
-                    placeholder="Jane Doe"
+                    placeholder="e.g. Dr. Jane Smith"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    required
                   />
                 </div>
               )}
@@ -93,7 +95,7 @@ export default function AuthModal({ show, onClose }) {
                 <input
                   type="text"
                   className="form-control form-control-dark"
-                  placeholder="janedoe"
+                  placeholder="username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
@@ -106,7 +108,7 @@ export default function AuthModal({ show, onClose }) {
                   <input
                     type="email"
                     className="form-control form-control-dark"
-                    placeholder="jane@example.com"
+                    placeholder="user@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
@@ -131,7 +133,7 @@ export default function AuthModal({ show, onClose }) {
               <button
                 type="button"
                 className="btn btn-link text-cyan text-decoration-none p-0 small"
-                onClick={() => setIsRegister(!isRegister)}
+                onClick={toggleMode}
               >
                 {isRegister ? 'Already have an account? Sign In' : 'Need an account? Register'}
               </button>
