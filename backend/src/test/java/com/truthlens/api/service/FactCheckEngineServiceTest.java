@@ -436,6 +436,26 @@ public class FactCheckEngineServiceTest {
         assertNotNull(response.getOriginDiscovery(), "Origin discovery metadata should be present!");
         assertEquals("DOCUMENTED_HOAX", response.getOriginDiscovery().getProvenanceType());
     }
+
+    @Test
+    @DisplayName("Altered news 'Mumbai terror attack, None killed' should be flagged as contradiction / fake with ALTERED_DISTORTION")
+    public void testAlteredMumbaiTerrorAttackNoneKilled() {
+        ClaimVerificationRequest request = ClaimVerificationRequest.builder()
+                .type("TEXT")
+                .content("Mumbai terror attack, None killed")
+                .build();
+
+        ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
+
+        assertNotNull(response);
+        assertTrue(response.getGenuinenessScore() <= 30, "Altered Mumbai attack with 0 casualties should score <= 30, was: " + response.getGenuinenessScore());
+        assertFalse(response.getVerdict().contains("GENUINE"), "Verdict must not be genuine!");
+        assertNotNull(response.getOriginDiscovery());
+        assertEquals("ALTERED_DISTORTION", response.getOriginDiscovery().getProvenanceType());
+        assertTrue(response.getOriginDiscovery().getDistortionAnalysis().toLowerCase().contains("none") ||
+                   response.getOriginDiscovery().getDistortionAnalysis().toLowerCase().contains("casualties") ||
+                   response.getOriginDiscovery().getDistortionAnalysis().toLowerCase().contains("zero"));
+    }
 }
 
 

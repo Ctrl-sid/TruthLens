@@ -49,19 +49,51 @@ public class ExternalFactCheckService {
     public Optional<ExternalFactResult> queryExternalKnowledge(String query) {
         if (query == null || query.isBlank()) return Optional.empty();
 
-        // 1. First Priority: Live News Wire & Major Press Search (Google News RSS Feed)
-        Optional<ExternalFactResult> liveNewsMatch = queryLiveNewsWires(query);
+        // 1. Direct Live News Wire Search
+        Optional<ExternalFactResult> liveNewsMatch = queryLiveNewsWires(query, query);
         if (liveNewsMatch.isPresent()) {
             return liveNewsMatch;
         }
 
-        // 2. Second Priority: Wikipedia OpenSearch & Encyclopedic Knowledge
-        return queryWikipedia(query);
+        // 2. Direct Wikipedia OpenSearch
+        Optional<ExternalFactResult> wikiMatch = queryWikipedia(query, query);
+        if (wikiMatch.isPresent()) {
+            return wikiMatch;
+        }
+
+        // 3. Fallback: If claim contains negations or zero-quantifiers (e.g. "Mumbai terror attack, None killed"),
+        // search for the underlying origin story (e.g. "Mumbai terror attack") and cross-reference against the prompt!
+        String coreEventQuery = extractCoreEventQuery(query);
+        if (!coreEventQuery.equalsIgnoreCase(query) && coreEventQuery.length() >= 4) {
+            Optional<ExternalFactResult> liveEventMatch = queryLiveNewsWires(coreEventQuery, query);
+            if (liveEventMatch.isPresent()) {
+                return liveEventMatch;
+            }
+
+            Optional<ExternalFactResult> wikiEventMatch = queryWikipedia(coreEventQuery, query);
+            if (wikiEventMatch.isPresent()) {
+                return wikiEventMatch;
+            }
+        }
+
+        return Optional.empty();
+    }
+
+    public String extractCoreEventQuery(String query) {
+        if (query == null) return "";
+        return query.replaceAll("(?i)\\b(none|nobody|zero|nil|no\\s+one|no\\s+casualties|no\\s+deaths|never|not|fake|true|false)\\b", "")
+                .replaceAll("[,;.:!?]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
     }
 
     public Optional<ExternalFactResult> queryLiveNewsWires(String query) {
+        return queryLiveNewsWires(query, query);
+    }
+
+    public Optional<ExternalFactResult> queryLiveNewsWires(String searchQuery, String originalQuery) {
         try {
-            String cleanQuery = cleanSearchQuery(query);
+            String cleanQuery = cleanSearchQuery(searchQuery);
             if (cleanQuery.length() < 3) return Optional.empty();
 
             String encodedQuery = URLEncoder.encode(cleanQuery, StandardCharsets.UTF_8);
@@ -76,7 +108,7 @@ public class ExternalFactCheckService {
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
-                return parseGoogleNewsRss(response.body(), query);
+                return parseGoogleNewsRss(response.body(), originalQuery);
             }
         } catch (Exception e) {
             log.debug("Live news wire search skipped or timed out: {}", e.getMessage());
@@ -295,10 +327,14 @@ public class ExternalFactCheckService {
         Integer aNum = extractFirstNumber(a, wordToNum);
 
         if (qNum != null && aNum != null && !qNum.equals(aNum)) {
-            if (qNum == 0 && aNum > 0) {
-                return new ContradictionCheck(true, "Claim asserts zero / none, whereas verified coverage confirms " + aNum + ".");
-            } else if (Math.abs(qNum - aNum) >= 3 && Math.max(qNum, aNum) >= 5) {
-                return new ContradictionCheck(true, "Significant discrepancy in reported figures (claim states " + qNum + ", news reports " + aNum + ").");
+            // Check if the article actually contains qNum anywhere in text
+            boolean articleContainsQueryNumber = a.contains(" " + qNum + " ") || a.contains(" " + qNum + ",") || a.contains(" " + qNum + ".");
+            if (!articleContainsQueryNumber) {
+                if (qNum == 0 && aNum > 0) {
+                    return new ContradictionCheck(true, "Claim asserts zero / none, whereas verified coverage confirms " + aNum + ".");
+                } else if (Math.abs(qNum - aNum) >= 3 && Math.max(qNum, aNum) >= 5) {
+                    return new ContradictionCheck(true, "Significant discrepancy in reported figures (claim states " + qNum + ", news reports " + aNum + ").");
+                }
             }
         }
 
@@ -313,12 +349,17 @@ public class ExternalFactCheckService {
 
     private Integer extractFirstNumber(String text, Map<String, Integer> wordToNum) {
         if (text == null) return null;
-        for (String token : text.toLowerCase().split("[^a-zA-Z0-9]+")) {
+        String sanitized = text.replaceAll("(?i)\\b\\d{1,2}/\\d{1,2}\\b", " ");
+        for (String token : sanitized.toLowerCase().split("[^a-zA-Z0-9]+")) {
             if (wordToNum.containsKey(token)) {
                 return wordToNum.get(token);
             }
             try {
-                return Integer.parseInt(token);
+                int val = Integer.parseInt(token);
+                if (val >= 1800 && val <= 2099) {
+                    continue; // Skip 4-digit calendar years
+                }
+                return val;
             } catch (NumberFormatException ignored) {}
         }
         return null;
@@ -361,8 +402,12 @@ public class ExternalFactCheckService {
     }
 
     private Optional<ExternalFactResult> queryWikipedia(String query) {
+        return queryWikipedia(query, query);
+    }
+
+    private Optional<ExternalFactResult> queryWikipedia(String searchQuery, String originalQuery) {
         try {
-            String simplifiedQuery = cleanSearchQuery(query);
+            String simplifiedQuery = cleanSearchQuery(searchQuery);
             String[] words = simplifiedQuery.split(" ");
             if (words.length > 4) {
                 simplifiedQuery = String.join(" ", words[0], words[1], words[2], words[3]);
@@ -392,7 +437,13 @@ public class ExternalFactCheckService {
                     String snippet = snippets.get(0);
                     String pageUrl = !urls.isEmpty() ? urls.get(0) : "https://en.wikipedia.org/wiki/" + URLEncoder.encode(title.replace(" ", "_"), StandardCharsets.UTF_8);
 
-                    boolean corroborates = doesWikipediaCorroborateClaim(query, title, snippet);
+                    ContradictionCheck contradiction = detectContradiction(originalQuery, title + " " + snippet);
+                    boolean isContradicted = contradiction.isContradicted();
+                    boolean corroborates = !isContradicted && doesWikipediaCorroborateClaim(originalQuery, title, snippet);
+
+                    if (!corroborates && !isContradicted) {
+                        return Optional.empty();
+                    }
 
                     ClaimOriginDiscovery originDiscovery = ClaimOriginDiscovery.builder()
                             .originalPublisher("Wikipedia Knowledge Archive")
@@ -400,25 +451,31 @@ public class ExternalFactCheckService {
                             .originalHeadline(title)
                             .originalUrl(pageUrl)
                             .publishedDate("Encyclopedic Public Record")
-                            .provenanceType(corroborates ? "AUTHENTIC_REPRODUCTION" : "UNVERIFIED_ORIGIN")
-                            .distortionAnalysis(corroborates ?
-                                    "Claim factually aligns with official documented public and historical records on Wikipedia." :
-                                    "Assertion could not be substantiated against documented public records.")
-                            .crossReferencedConsensus(corroborates ?
-                                    "Corroborated by Wikimedia Foundation historical archives." :
-                                    "Uncorroborated: No matching historical documentation.")
-                            .originMatchConfidence(corroborates ? 90.0 : 40.0)
+                            .provenanceType(isContradicted ? "ALTERED_DISTORTION" : (corroborates ? "AUTHENTIC_REPRODUCTION" : "UNVERIFIED_ORIGIN"))
+                            .distortionAnalysis(isContradicted ?
+                                    "Claim derived from verified historical records for '" + title + "', but key facts were distorted: " + contradiction.getReason() :
+                                    (corroborates ?
+                                            "Claim factually aligns with official documented public and historical records on Wikipedia." :
+                                            "Assertion could not be substantiated against documented public records."))
+                            .crossReferencedConsensus(isContradicted ?
+                                    "Contradicted by documented encyclopedic and historical records." :
+                                    "Corroborated by Wikimedia Foundation historical archives.")
+                            .originMatchConfidence(isContradicted || corroborates ? 92.0 : 40.0)
                             .build();
 
                     return Optional.of(ExternalFactResult.builder()
                             .topic(title)
-                            .snippet(snippet)
+                            .snippet(isContradicted ?
+                                    "Contradicted by verified historical records on Wikipedia (" + title + "): \"" + snippet + "\". " + contradiction.getReason() :
+                                    snippet)
                             .sourceName("Wikipedia Knowledge Archive")
                             .sourceDomain("wikipedia.org")
                             .sourceUrl(pageUrl)
                             .isAuthenticCorroboration(corroborates)
+                            .isContradiction(isContradicted)
+                            .contradictionDetail(isContradicted ? contradiction.getReason() : null)
                             .credibilityScore(94)
-                            .matchPercentage(corroborates ? 90.0 : 40.0)
+                            .matchPercentage(isContradicted || corroborates ? 90.0 : 40.0)
                             .originDiscovery(originDiscovery)
                             .crossReferencedSources(List.of(SourceEvidence.builder()
                                     .sourceName("Wikipedia Knowledge Archive")
@@ -426,8 +483,8 @@ public class ExternalFactCheckService {
                                     .articleTitle(title)
                                     .url(pageUrl)
                                     .credibilityRating(94)
-                                    .matchPercentage(corroborates ? 90.0 : 40.0)
-                                    .verdictBySource(corroborates ? "Verified True" : "Unverified")
+                                    .matchPercentage(90.0)
+                                    .verdictBySource(isContradicted ? "Contradicted / False" : (corroborates ? "Verified True" : "Unverified"))
                                     .build()))
                             .build());
                 }

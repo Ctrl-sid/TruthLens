@@ -115,11 +115,8 @@ public class FactCheckEngineService {
         // 4. Match against Fact-Checking Corpus using TF-IDF & Cosine Similarity
         MatchResult corpusMatch = factCheckingCorpus.matchClaimAgainstCorpus(contentToAnalyze);
 
-        // 5. Query External Knowledge (if online & claim is not yet definitively matched)
-        Optional<ExternalFactCheckService.ExternalFactResult> externalFact = Optional.empty();
-        if (corpusMatch.getTopSimilarity() < 0.65) {
-            externalFact = externalFactCheckService.queryExternalKnowledge(contentToAnalyze);
-        }
+        // 5. Query External Knowledge & Live News Wires for Origin & Cross-Referencing
+        Optional<ExternalFactCheckService.ExternalFactResult> externalFact = externalFactCheckService.queryExternalKnowledge(contentToAnalyze);
 
         // 6. Check Domain Credibility if input is URL
         VerifiedSource domainSource = null;

@@ -246,6 +246,22 @@ public class FactCheckingCorpus {
                 "Kolkata Hotel Fire: Nine Bangladeshi Nationals Killed in Tragic Blaze",
                 "Accredited news agencies and municipal emergency response authorities confirmed nine fatalities following a structural hotel fire in Kolkata.",
                 List.of("kolkata", "hotel", "fire", "kills", "nine", "bangladeshi", "killed"));
+
+        addEntry("TRUE-011",
+                "2008 Mumbai terror attacks: 166 civilians and security personnel killed in coordinated 26/11 attacks across Mumbai by Lashkar-e-Taiba terrorists",
+                "Terrorism & National Security", false, "Verified True",
+                "The Hindu & Reuters", "thehindu.com", "https://www.thehindu.com/news/national/26-11-mumbai-terror-attacks",
+                "2008 Mumbai Terror Attacks: Official Casualties and Investigation Record",
+                "Official government judicial and security documentation confirms 166 victims were killed and over 300 injured during the November 2008 Mumbai attacks.",
+                List.of("mumbai", "terror", "attack", "26/11", "killed", "attacks", "terrorist", "casualties"));
+
+        addEntry("TRUE-012",
+                "Pulwama terror attack kills 40 CRPF personnel in suicide bombing on security convoy in Jammu and Kashmir",
+                "National Security", false, "Verified True",
+                "PTI & Indian Express", "indianexpress.com", "https://indianexpress.com/article/india/pulwama-attack-anniversary",
+                "Pulwama Terror Attack Official Casualty Record",
+                "Government of India and Central Reserve Police Force official records document 40 CRPF personnel killed in the February 2019 Pulwama terror attack.",
+                List.of("pulwama", "crpf", "terror", "attack", "killed", "convoy", "kashmir"));
     }
 
     private void addEntry(String id, String text, String category, boolean isDebunkedFake,
