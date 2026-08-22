@@ -386,6 +386,56 @@ public class FactCheckEngineServiceTest {
         assertNotNull(response);
         assertNotEquals("NON-VERIFIABLE INPUT", response.getVerdict(), "Valid URL input should not fail word-length validator!");
     }
+
+    @Test
+    @DisplayName("Genuine claim should discover originating publisher and AUTHENTIC_REPRODUCTION provenance")
+    public void testOriginDiscoveryGenuineNews() {
+        ClaimVerificationRequest request = ClaimVerificationRequest.builder()
+                .type("TEXT")
+                .content("massive fire in kolkata killed nine")
+                .build();
+
+        ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
+
+        assertNotNull(response);
+        assertNotNull(response.getOriginDiscovery(), "Origin discovery metadata should be present!");
+        assertEquals("AUTHENTIC_REPRODUCTION", response.getOriginDiscovery().getProvenanceType());
+        assertNotNull(response.getOriginDiscovery().getOriginalPublisher());
+        assertNotNull(response.getOriginDiscovery().getOriginalHeadline());
+    }
+
+    @Test
+    @DisplayName("Altered claim should identify origin and flag ALTERED_DISTORTION with distortion details")
+    public void testOriginDiscoveryAlteredNews() {
+        ClaimVerificationRequest request = ClaimVerificationRequest.builder()
+                .type("TEXT")
+                .content("massive fire in kolkata killed none")
+                .build();
+
+        ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
+
+        assertNotNull(response);
+        assertNotNull(response.getOriginDiscovery(), "Origin discovery metadata should be present!");
+        assertEquals("ALTERED_DISTORTION", response.getOriginDiscovery().getProvenanceType());
+        assertNotNull(response.getOriginDiscovery().getOriginalPublisher());
+        assertTrue(response.getOriginDiscovery().getDistortionAnalysis().toLowerCase().contains("none") ||
+                   response.getOriginDiscovery().getDistortionAnalysis().toLowerCase().contains("casualties"));
+    }
+
+    @Test
+    @DisplayName("Debunked hoax claim should flag DOCUMENTED_HOAX provenance")
+    public void testOriginDiscoveryDocumentedHoax() {
+        ClaimVerificationRequest request = ClaimVerificationRequest.builder()
+                .type("TEXT")
+                .content("drinking chlorine dioxide miracle mineral solution cures all diseases and cancer")
+                .build();
+
+        ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
+
+        assertNotNull(response);
+        assertNotNull(response.getOriginDiscovery(), "Origin discovery metadata should be present!");
+        assertEquals("DOCUMENTED_HOAX", response.getOriginDiscovery().getProvenanceType());
+    }
 }
 
 

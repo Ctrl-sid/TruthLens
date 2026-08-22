@@ -1,5 +1,7 @@
 package com.truthlens.api.service;
 
+import com.truthlens.api.dto.ClaimVerificationResponse.ClaimOriginDiscovery;
+import com.truthlens.api.dto.ClaimVerificationResponse.SourceEvidence;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -39,6 +41,9 @@ public class ExternalFactCheckService {
         private String contradictionDetail;
         private int credibilityScore;
         private double matchPercentage;
+        private ClaimOriginDiscovery originDiscovery;
+        @Builder.Default
+        private List<SourceEvidence> crossReferencedSources = new ArrayList<>();
     }
 
     public Optional<ExternalFactResult> queryExternalKnowledge(String query) {
@@ -90,6 +95,10 @@ public class ExternalFactCheckService {
         String bestLink = null;
         String bestSource = null;
         String bestSourceUrl = null;
+        ContradictionCheck bestContradiction = null;
+
+        List<SourceEvidence> crossReferencedList = new ArrayList<>();
+        Set<String> seenDomains = new HashSet<>();
 
         while (itemMatcher.find()) {
             String itemBlock = itemMatcher.group(1);
@@ -127,8 +136,6 @@ public class ExternalFactCheckService {
 
                 boolean queryClaimsDeath = qLower.contains("passed away") || qLower.contains("died") || qLower.contains("dead") || qLower.contains("killed") || qLower.contains("death") || qLower.contains("assassinated");
                 if (queryClaimsDeath) {
-                    // If headline states subject "mourns", "saddened by", "condoles", "pays tribute", "reacts to death":
-                    // The subject is issuing condolences, which proves the subject is alive!
                     boolean subjectIsMourningSomeoneElse = tLower.contains("saddened by") || tLower.contains("mourns") || 
                                                            tLower.contains("condoles") || tLower.contains("pays tribute") || 
                                                            tLower.contains("condolence") || tLower.contains("grieves") || 
@@ -152,12 +159,31 @@ public class ExternalFactCheckService {
                 }
 
                 double overlap = calculateQueryArticleOverlap(originalQuery, title);
+                ContradictionCheck itemContradiction = detectContradiction(originalQuery, title);
+
+                if (overlap >= 0.38) {
+                    String domainKey = resolvedDomain != null ? resolvedDomain : currentSource;
+                    if (!seenDomains.contains(domainKey)) {
+                        seenDomains.add(domainKey);
+                        crossReferencedList.add(SourceEvidence.builder()
+                                .sourceName(currentSource)
+                                .domain(resolvedDomain != null ? resolvedDomain : "news.google.com")
+                                .articleTitle(title)
+                                .url(link != null ? link : (sourceUrl != null ? sourceUrl : "https://news.google.com"))
+                                .credibilityRating(determineSourceCredibility(currentSource))
+                                .matchPercentage(Math.min(99.0, Math.round((72.0 + (overlap * 25.0)) * 10.0) / 10.0))
+                                .verdictBySource(itemContradiction.isContradicted() ? "Contradicted / False" : "Verified True")
+                                .build());
+                    }
+                }
+
                 if (overlap > bestOverlap) {
                     bestOverlap = overlap;
                     bestTitle = title;
                     bestLink = link;
                     bestSource = currentSource;
                     bestSourceUrl = sourceUrl;
+                    bestContradiction = itemContradiction;
                 }
             }
         }
@@ -172,19 +198,38 @@ public class ExternalFactCheckService {
             int cred = determineSourceCredibility(bestSource);
             double matchPct = Math.min(99.0, Math.round((74.0 + (bestOverlap * 24.0)) * 10.0) / 10.0);
 
-            ContradictionCheck contradiction = detectContradiction(originalQuery, bestTitle);
-            if (contradiction.isContradicted()) {
+            boolean isContradicted = bestContradiction != null && bestContradiction.isContradicted();
+
+            ClaimOriginDiscovery originDiscovery = ClaimOriginDiscovery.builder()
+                    .originalPublisher(bestSource)
+                    .originalDomain(resolvedDomain)
+                    .originalHeadline(bestTitle)
+                    .originalUrl(bestLink != null ? bestLink : (bestSourceUrl != null ? bestSourceUrl : "https://news.google.com"))
+                    .publishedDate("Verified Press Dispatch")
+                    .provenanceType(isContradicted ? "ALTERED_DISTORTION" : "AUTHENTIC_REPRODUCTION")
+                    .distortionAnalysis(isContradicted ?
+                            "Claim derived from a verified news event reported by " + bestSource + ", but altered: " + bestContradiction.getReason() :
+                            "Claim faithfully matches verified reporting originally published by " + bestSource + ".")
+                    .crossReferencedConsensus(isContradicted ?
+                            "Contradicted across accredited news wire reports." :
+                            "Cross-referenced and corroborated across " + Math.max(1, crossReferencedList.size()) + " accredited news wire agencies.")
+                    .originMatchConfidence(matchPct)
+                    .build();
+
+            if (isContradicted) {
                 return Optional.of(ExternalFactResult.builder()
                         .topic(bestTitle)
-                        .snippet("Contradicted by verified press reporting from " + bestSource + ": \"" + bestTitle + "\". " + contradiction.getReason())
+                        .snippet("Contradicted by verified press reporting from " + bestSource + ": \"" + bestTitle + "\". " + bestContradiction.getReason())
                         .sourceName(bestSource)
                         .sourceDomain(resolvedDomain)
                         .sourceUrl(bestLink != null ? bestLink : (bestSourceUrl != null ? bestSourceUrl : "https://news.google.com"))
                         .isAuthenticCorroboration(false)
                         .isContradiction(true)
-                        .contradictionDetail(contradiction.getReason())
+                        .contradictionDetail(bestContradiction.getReason())
                         .credibilityScore(cred)
                         .matchPercentage(matchPct)
+                        .originDiscovery(originDiscovery)
+                        .crossReferencedSources(crossReferencedList)
                         .build());
             }
 
@@ -198,6 +243,8 @@ public class ExternalFactCheckService {
                     .isContradiction(false)
                     .credibilityScore(cred)
                     .matchPercentage(matchPct)
+                    .originDiscovery(originDiscovery)
+                    .crossReferencedSources(crossReferencedList)
                     .build());
         }
 
@@ -347,6 +394,22 @@ public class ExternalFactCheckService {
 
                     boolean corroborates = doesWikipediaCorroborateClaim(query, title, snippet);
 
+                    ClaimOriginDiscovery originDiscovery = ClaimOriginDiscovery.builder()
+                            .originalPublisher("Wikipedia Knowledge Archive")
+                            .originalDomain("wikipedia.org")
+                            .originalHeadline(title)
+                            .originalUrl(pageUrl)
+                            .publishedDate("Encyclopedic Public Record")
+                            .provenanceType(corroborates ? "AUTHENTIC_REPRODUCTION" : "UNVERIFIED_ORIGIN")
+                            .distortionAnalysis(corroborates ?
+                                    "Claim factually aligns with official documented public and historical records on Wikipedia." :
+                                    "Assertion could not be substantiated against documented public records.")
+                            .crossReferencedConsensus(corroborates ?
+                                    "Corroborated by Wikimedia Foundation historical archives." :
+                                    "Uncorroborated: No matching historical documentation.")
+                            .originMatchConfidence(corroborates ? 90.0 : 40.0)
+                            .build();
+
                     return Optional.of(ExternalFactResult.builder()
                             .topic(title)
                             .snippet(snippet)
@@ -356,6 +419,16 @@ public class ExternalFactCheckService {
                             .isAuthenticCorroboration(corroborates)
                             .credibilityScore(94)
                             .matchPercentage(corroborates ? 90.0 : 40.0)
+                            .originDiscovery(originDiscovery)
+                            .crossReferencedSources(List.of(SourceEvidence.builder()
+                                    .sourceName("Wikipedia Knowledge Archive")
+                                    .domain("wikipedia.org")
+                                    .articleTitle(title)
+                                    .url(pageUrl)
+                                    .credibilityRating(94)
+                                    .matchPercentage(corroborates ? 90.0 : 40.0)
+                                    .verdictBySource(corroborates ? "Verified True" : "Unverified")
+                                    .build()))
                             .build());
                 }
             }

@@ -6,6 +6,7 @@ import UrlInput from './components/InputTabs/UrlInput';
 import ImageInput from './components/InputTabs/ImageInput';
 import TruthScoreGauge from './components/Results/TruthScoreGauge';
 import RationaleCard from './components/Results/RationaleCard';
+import ClaimOriginCard from './components/Results/ClaimOriginCard';
 import NlpAnalysisCard from './components/Results/NlpAnalysisCard';
 import SourceEvidenceList from './components/Results/SourceEvidenceList';
 import ImageHeatmap from './components/Results/ImageHeatmap';
@@ -26,7 +27,7 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState('TEXT'); // TEXT, URL, IMAGE
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
-  const [activeResultTab, setActiveResultTab] = useState('nlp'); // nlp, sources, image
+  const [activeResultTab, setActiveResultTab] = useState('origin'); // origin, nlp, sources, image
 
   // Modals & Drawers
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -244,10 +245,18 @@ function AppContent() {
                   <ul className="nav nav-tabs border-secondary border-opacity-25 mb-3 gap-2">
                     <li className="nav-item">
                       <button
+                        className={`nav-link text-light opacity-75 border-0 ${activeResultTab === 'origin' ? 'active text-cyan fw-bold border-bottom border-cyan' : ''}`}
+                        onClick={() => setActiveResultTab('origin')}
+                      >
+                        <i className="bi bi-compass me-1"></i> Claim Origin & Provenance
+                      </button>
+                    </li>
+                    <li className="nav-item">
+                      <button
                         className={`nav-link text-light opacity-75 border-0 ${activeResultTab === 'nlp' ? 'active text-cyan fw-bold border-bottom border-cyan' : ''}`}
                         onClick={() => setActiveResultTab('nlp')}
                       >
-                        <i className="bi bi-cpu me-1"></i> NLP & Linguistic Diagnostics
+                        <i className="bi bi-cpu me-1"></i> NLP Diagnostics
                       </button>
                     </li>
                     <li className="nav-item">
@@ -255,7 +264,7 @@ function AppContent() {
                         className={`nav-link text-light opacity-75 border-0 ${activeResultTab === 'sources' ? 'active text-cyan fw-bold border-bottom border-cyan' : ''}`}
                         onClick={() => setActiveResultTab('sources')}
                       >
-                        <i className="bi bi-diagram-3 me-1"></i> Source Consensus ({result.sources?.length || 0})
+                        <i className="bi bi-diagram-3 me-1"></i> Wire Consensus ({result.sources?.length || 0})
                       </button>
                     </li>
                     {result.imageAnalysis && (
@@ -270,6 +279,9 @@ function AppContent() {
                     )}
                   </ul>
 
+                  {activeResultTab === 'origin' && (
+                    <ClaimOriginCard originDiscovery={result.originDiscovery} userClaim={result.claimSummary} />
+                  )}
                   {activeResultTab === 'nlp' && <NlpAnalysisCard nlpData={result.nlpAnalysis} />}
                   {activeResultTab === 'sources' && <SourceEvidenceList sources={result.sources} />}
                   {activeResultTab === 'image' && <ImageHeatmap imageAnalysis={result.imageAnalysis} />}

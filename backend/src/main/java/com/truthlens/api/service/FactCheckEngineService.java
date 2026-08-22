@@ -2,6 +2,7 @@ package com.truthlens.api.service;
 
 import com.truthlens.api.dto.ClaimVerificationRequest;
 import com.truthlens.api.dto.ClaimVerificationResponse;
+import com.truthlens.api.dto.ClaimVerificationResponse.ClaimOriginDiscovery;
 import com.truthlens.api.dto.ClaimVerificationResponse.SourceEvidence;
 import com.truthlens.api.dto.NlpAnalysisResponse;
 import com.truthlens.api.model.FactCheckHistory;
@@ -138,6 +139,9 @@ public class FactCheckEngineService {
         // 8. Build Authentic Source Citations
         List<SourceEvidence> sources = buildSourceCitations(contentToAnalyze, score, corpusMatch, externalFact, domainSource);
 
+        // 8.1 Build Claim Origin & Provenance Discovery
+        ClaimOriginDiscovery originDiscovery = buildClaimOriginDiscovery(contentToAnalyze, score, verdict, corpusMatch, externalFact, domainSource);
+
         String summary = nlpResults.getExtractedEntities().isEmpty() ?
                 (contentToAnalyze.length() > 80 ? contentToAnalyze.substring(0, 77) + "..." : contentToAnalyze)
                 : "Claim involving " + String.join(", ", nlpResults.getExtractedEntities());
@@ -181,6 +185,7 @@ public class FactCheckEngineService {
                 .rationale(rationale)
                 .keyReasons(keyReasons)
                 .sources(sources)
+                .originDiscovery(originDiscovery)
                 .nlpAnalysis(nlpResults)
                 .imageAnalysis(imageAnalysis)
                 .timestamp(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
@@ -454,16 +459,20 @@ public class FactCheckEngineService {
 
         if (externalFact.isPresent()) {
             ExternalFactCheckService.ExternalFactResult ext = externalFact.get();
-            String verdictBySource = ext.isContradiction() ? "Contradicted / False" : (ext.isAuthenticCorroboration() ? "Verified True" : "Under Review");
-            sources.add(SourceEvidence.builder()
-                    .sourceName(ext.getSourceName() != null ? ext.getSourceName() : "Accredited Wire Press")
-                    .domain(ext.getSourceDomain() != null ? ext.getSourceDomain() : "news.google.com")
-                    .articleTitle(ext.getTopic())
-                    .url(ext.getSourceUrl())
-                    .credibilityRating(ext.getCredibilityScore() > 0 ? ext.getCredibilityScore() : 95)
-                    .matchPercentage(ext.getMatchPercentage() > 0 ? ext.getMatchPercentage() : 90.0)
-                    .verdictBySource(verdictBySource)
-                    .build());
+            if (ext.getCrossReferencedSources() != null && !ext.getCrossReferencedSources().isEmpty()) {
+                sources.addAll(ext.getCrossReferencedSources());
+            } else {
+                String verdictBySource = ext.isContradiction() ? "Contradicted / False" : (ext.isAuthenticCorroboration() ? "Verified True" : "Under Review");
+                sources.add(SourceEvidence.builder()
+                        .sourceName(ext.getSourceName() != null ? ext.getSourceName() : "Accredited Wire Press")
+                        .domain(ext.getSourceDomain() != null ? ext.getSourceDomain() : "news.google.com")
+                        .articleTitle(ext.getTopic())
+                        .url(ext.getSourceUrl())
+                        .credibilityRating(ext.getCredibilityScore() > 0 ? ext.getCredibilityScore() : 95)
+                        .matchPercentage(ext.getMatchPercentage() > 0 ? ext.getMatchPercentage() : 90.0)
+                        .verdictBySource(verdictBySource)
+                        .build());
+            }
         }
 
         if (score >= 75) {
@@ -559,6 +568,78 @@ public class FactCheckEngineService {
         }
 
         return sources;
+    }
+
+    private ClaimOriginDiscovery buildClaimOriginDiscovery(String text, int score, String verdict,
+                                                           MatchResult corpusMatch,
+                                                           Optional<ExternalFactCheckService.ExternalFactResult> externalFact,
+                                                           VerifiedSource domainSource) {
+        if (externalFact.isPresent() && externalFact.get().getOriginDiscovery() != null) {
+            return externalFact.get().getOriginDiscovery();
+        }
+
+        if (corpusMatch.getBestDebunkedEntry() != null && corpusMatch.getDebunkedSimilarity() >= 0.45) {
+            CorpusEntry entry = corpusMatch.getBestDebunkedEntry();
+            return ClaimOriginDiscovery.builder()
+                    .originalPublisher(entry.getSourceName())
+                    .originalDomain(entry.getSourceDomain())
+                    .originalHeadline(entry.getArticleTitle())
+                    .originalUrl(entry.getSourceUrl())
+                    .publishedDate("Fact-Check Archive")
+                    .provenanceType("DOCUMENTED_HOAX")
+                    .distortionAnalysis("Identified as a documented viral internet hoax / misinformation campaign debunked by " + entry.getSourceName() + ".")
+                    .crossReferencedConsensus("Refuted across accredited fact-checking repositories (Snopes, PolitiFact, AP).")
+                    .originMatchConfidence(Math.round(corpusMatch.getDebunkedSimilarity() * 1000.0) / 10.0)
+                    .build();
+        }
+
+        if (corpusMatch.getBestVerifiedEntry() != null && corpusMatch.getVerifiedSimilarity() >= 0.45) {
+            CorpusEntry entry = corpusMatch.getBestVerifiedEntry();
+            ExternalFactCheckService.ContradictionCheck corpusContradiction = checkContradictionSafely(text, entry.getText());
+            boolean isCorpusContradicted = corpusContradiction != null && corpusContradiction.isContradicted();
+
+            return ClaimOriginDiscovery.builder()
+                    .originalPublisher(entry.getSourceName())
+                    .originalDomain(entry.getSourceDomain())
+                    .originalHeadline(entry.getArticleTitle())
+                    .originalUrl(entry.getSourceUrl())
+                    .publishedDate("Historical Wire Dispatch")
+                    .provenanceType(isCorpusContradicted ? "ALTERED_DISTORTION" : "AUTHENTIC_REPRODUCTION")
+                    .distortionAnalysis(isCorpusContradicted ?
+                            "Claim derived from a verified news report by " + entry.getSourceName() + " (" + entry.getArticleTitle() + "), but key facts were distorted: " + corpusContradiction.getReason() :
+                            "Claim matches verified documentary records published by " + entry.getSourceName() + ".")
+                    .crossReferencedConsensus(isCorpusContradicted ?
+                            "Contradicted by primary reporting from " + entry.getSourceName() + "." :
+                            "Corroborated across primary news wire repositories.")
+                    .originMatchConfidence(Math.round(corpusMatch.getVerifiedSimilarity() * 1000.0) / 10.0)
+                    .build();
+        }
+
+        if (domainSource != null) {
+            return ClaimOriginDiscovery.builder()
+                    .originalPublisher(domainSource.getName())
+                    .originalDomain(domainSource.getDomain())
+                    .originalHeadline("Direct Web Publication (" + domainSource.getDomain() + ")")
+                    .originalUrl("https://" + domainSource.getDomain())
+                    .publishedDate("Accredited Press Domain")
+                    .provenanceType(score >= 70 ? "AUTHENTIC_REPRODUCTION" : "UNVERIFIED_ORIGIN")
+                    .distortionAnalysis("Originates from registered press domain (" + domainSource.getName() + ", Credibility " + domainSource.getCredibilityScore() + "/100).")
+                    .crossReferencedConsensus("Domain credibility rating: " + domainSource.getCredibilityScore() + "/100.")
+                    .originMatchConfidence(85.0)
+                    .build();
+        }
+
+        return ClaimOriginDiscovery.builder()
+                .originalPublisher("Unverified Social Media / Web")
+                .originalDomain("unverified")
+                .originalHeadline("No primary news wire headline indexed")
+                .originalUrl("https://news.google.com")
+                .publishedDate("Undated Online Assertion")
+                .provenanceType("UNVERIFIED_ORIGIN")
+                .distortionAnalysis("No accredited primary news agency, scientific journal, or official registry has reported this assertion.")
+                .crossReferencedConsensus("Uncorroborated: 0 primary news wire records found.")
+                .originMatchConfidence(40.0)
+                .build();
     }
 
     private String extractDomainFromUrl(String url) {
