@@ -1,6 +1,7 @@
 package com.truthlens.api.service;
 
 import com.truthlens.api.dto.ClaimVerificationResponse.ClaimOriginDiscovery;
+import com.truthlens.api.dto.ClaimVerificationResponse.EvidenceCluster;
 import com.truthlens.api.dto.ClaimVerificationResponse.SourceEvidence;
 import lombok.Builder;
 import lombok.Getter;
@@ -44,6 +45,8 @@ public class ExternalFactCheckService {
         private ClaimOriginDiscovery originDiscovery;
         @Builder.Default
         private List<SourceEvidence> crossReferencedSources = new ArrayList<>();
+        @Builder.Default
+        private List<EvidenceCluster> evidenceClusters = new ArrayList<>();
     }
 
     public Optional<ExternalFactResult> queryExternalKnowledge(String query) {
@@ -55,14 +58,13 @@ public class ExternalFactCheckService {
             return liveNewsMatch;
         }
 
-        // 2. Direct Wikipedia OpenSearch
+        // 2. Direct Wikipedia OpenSearch (Level 4 Reference)
         Optional<ExternalFactResult> wikiMatch = queryWikipedia(query, query);
         if (wikiMatch.isPresent()) {
             return wikiMatch;
         }
 
-        // 3. Fallback: If claim contains negations or zero-quantifiers (e.g. "Mumbai terror attack, None killed"),
-        // search for the underlying origin story (e.g. "Mumbai terror attack") and cross-reference against the prompt!
+        // 3. Fallback: If claim contains zero-quantifiers or modifiers, search for base event
         String coreEventQuery = extractCoreEventQuery(query);
         if (!coreEventQuery.equalsIgnoreCase(query) && coreEventQuery.length() >= 4) {
             Optional<ExternalFactResult> liveEventMatch = queryLiveNewsWires(coreEventQuery, query);
@@ -140,147 +142,141 @@ public class ExternalFactCheckService {
             String source = extractTagValue(itemBlock, "source");
             String sourceUrl = extractSourceUrl(itemBlock);
 
-            if (title != null && !title.isBlank()) {
+            if (title != null) {
                 title = unescapeXml(title);
-                // Extract source name from title if source tag is missing or generic (e.g. "Headline - The Hindu")
-                if (title.contains(" - ")) {
-                    int lastDash = title.lastIndexOf(" - ");
-                    if (source == null || source.isBlank()) {
-                        source = title.substring(lastDash + 3).trim();
-                    }
-                    title = title.substring(0, lastDash).trim();
-                }
+            }
+            if (source == null && title != null && title.contains(" - ")) {
+                int lastDash = title.lastIndexOf(" - ");
+                source = title.substring(lastDash + 3).trim();
+                title = title.substring(0, lastDash).trim();
+            }
 
-                String currentSource = (source != null && !source.isBlank()) ? unescapeXml(source) : "Accredited News Wire";
-                String resolvedDomain = extractDomain(sourceUrl);
-                if (resolvedDomain == null || resolvedDomain.isBlank()) {
-                    resolvedDomain = extractDomainFromSourceName(currentSource);
-                }
+            if (title == null || title.isBlank()) continue;
 
-                // Check if this publisher is Tier-1 accredited - skip unverified blogs/substacks to find true Tier-1 hits!
-                if (!isTier1AccreditedPublisher(currentSource, resolvedDomain)) {
-                    continue;
-                }
+            String domain = extractDomain(sourceUrl != null ? sourceUrl : link);
+            if (domain == null) {
+                domain = extractDomainFromSourceName(source);
+            }
 
-                // Verify predicate action alignment: if query alleges death/arrest, headline must also report that event
-                String qLower = originalQuery.toLowerCase();
-                String tLower = title.toLowerCase();
+            // Retrieval quality filtering: Check token overlap against query
+            double overlap = calculateQueryArticleOverlap(originalQuery, title);
+            if (overlap < 0.25) {
+                // Skip completely irrelevant search results
+                continue;
+            }
 
-                boolean queryClaimsDeath = qLower.contains("passed away") || qLower.contains("died") || qLower.contains("dead") || qLower.contains("killed") || qLower.contains("death") || qLower.contains("assassinated");
-                if (queryClaimsDeath) {
-                    boolean subjectIsMourningSomeoneElse = tLower.contains("saddened by") || tLower.contains("mourns") || 
-                                                           tLower.contains("condoles") || tLower.contains("pays tribute") || 
-                                                           tLower.contains("condolence") || tLower.contains("grieves") || 
-                                                           tLower.contains("reacts to death");
-                    if (subjectIsMourningSomeoneElse) {
-                        continue; // Subject is alive and mourning someone else!
-                    }
+            if (!isTier1AccreditedPublisher(source, domain)) {
+                continue;
+            }
 
-                    boolean titleMentionsDeath = tLower.contains("passed away") || tLower.contains("dies") || tLower.contains("dead") || tLower.contains("killed") || tLower.contains("death of") || tLower.contains("obituary") || tLower.contains("assassinated");
-                    if (!titleMentionsDeath) {
-                        continue; // Headline does not report the alleged death!
-                    }
-                }
+            ContradictionCheck itemContradiction = detectContradiction(originalQuery, title);
 
-                boolean queryClaimsArrest = qLower.contains("arrested") || qLower.contains("detained") || qLower.contains("jailed") || qLower.contains("indicted");
-                if (queryClaimsArrest) {
-                    boolean titleMentionsArrest = tLower.contains("arrested") || tLower.contains("detained") || tLower.contains("jailed") || tLower.contains("indicted") || tLower.contains("charges");
-                    if (!titleMentionsArrest) {
-                        continue;
-                    }
-                }
+            if (overlap > bestOverlap) {
+                bestOverlap = overlap;
+                bestTitle = title;
+                bestLink = link;
+                bestSource = source != null ? source : "Accredited Wire Press";
+                bestSourceUrl = sourceUrl != null ? sourceUrl : link;
+                bestContradiction = itemContradiction;
+            }
 
-                double overlap = calculateQueryArticleOverlap(originalQuery, title);
-                ContradictionCheck itemContradiction = detectContradiction(originalQuery, title);
+            if (domain != null && !seenDomains.contains(domain.toLowerCase()) && crossReferencedList.size() < 6) {
+                seenDomains.add(domain.toLowerCase());
 
-                if (overlap >= 0.38) {
-                    String domainKey = resolvedDomain != null ? resolvedDomain : currentSource;
-                    if (!seenDomains.contains(domainKey)) {
-                        seenDomains.add(domainKey);
-                        crossReferencedList.add(SourceEvidence.builder()
-                                .sourceName(currentSource)
-                                .domain(resolvedDomain != null ? resolvedDomain : "news.google.com")
-                                .articleTitle(title)
-                                .url(link != null ? link : (sourceUrl != null ? sourceUrl : "https://news.google.com"))
-                                .credibilityRating(determineSourceCredibility(currentSource))
-                                .matchPercentage(Math.min(99.0, Math.round((72.0 + (overlap * 25.0)) * 10.0) / 10.0))
-                                .verdictBySource(itemContradiction.isContradicted() ? "Contradicted / False" : "Verified True")
-                                .build());
-                    }
-                }
+                String tier = determineEvidenceTier(source, domain);
+                String stance = itemContradiction.isContradicted() ? "REFUTED" : "SUPPORTED";
+                double independence = calculateIndependenceRating(source, domain);
 
-                if (overlap > bestOverlap) {
-                    bestOverlap = overlap;
-                    bestTitle = title;
-                    bestLink = link;
-                    bestSource = currentSource;
-                    bestSourceUrl = sourceUrl;
-                    bestContradiction = itemContradiction;
-                }
+                crossReferencedList.add(SourceEvidence.builder()
+                        .sourceName(source != null ? source : domain)
+                        .domain(domain)
+                        .evidenceTier(tier)
+                        .articleTitle(title)
+                        .url(link)
+                        .credibilityRating(determineSourceCredibility(source))
+                        .matchPercentage(Math.round(overlap * 1000.0) / 10.0)
+                        .independenceRating(independence)
+                        .stance(stance)
+                        .verdictBySource(itemContradiction.isContradicted() ? "Contradicted / False" : "Verified True")
+                        .clusterId("CLUSTER-WIRE-01")
+                        .build());
             }
         }
 
-        // Require at least 45% meaningful keyword overlap from verified Tier-1 publisher
-        if (bestOverlap >= 0.45 && bestTitle != null) {
-            String resolvedDomain = extractDomain(bestSourceUrl);
-            if (resolvedDomain == null || resolvedDomain.isBlank()) {
-                resolvedDomain = extractDomainFromSourceName(bestSource);
-            }
-
-            int cred = determineSourceCredibility(bestSource);
-            double matchPct = Math.min(99.0, Math.round((74.0 + (bestOverlap * 24.0)) * 10.0) / 10.0);
-
+        if (bestTitle != null && bestOverlap >= 0.35) {
             boolean isContradicted = bestContradiction != null && bestContradiction.isContradicted();
+            int cred = determineSourceCredibility(bestSource);
+            double matchPct = Math.round(bestOverlap * 1000.0) / 10.0;
+            String bestDomain = extractDomain(bestSourceUrl != null ? bestSourceUrl : bestLink);
+            if (bestDomain == null) bestDomain = extractDomainFromSourceName(bestSource);
+
+            String tier = determineEvidenceTier(bestSource, bestDomain);
+
+            // Group into Evidence Clusters
+            List<EvidenceCluster> clusters = buildEvidenceClusters(crossReferencedList, isContradicted);
 
             ClaimOriginDiscovery originDiscovery = ClaimOriginDiscovery.builder()
                     .originalPublisher(bestSource)
-                    .originalDomain(resolvedDomain)
+                    .originalDomain(bestDomain)
                     .originalHeadline(bestTitle)
-                    .originalUrl(bestLink != null ? bestLink : (bestSourceUrl != null ? bestSourceUrl : "https://news.google.com"))
+                    .originalUrl(bestLink)
                     .publishedDate("Verified Press Dispatch")
                     .provenanceType(isContradicted ? "ALTERED_DISTORTION" : "AUTHENTIC_REPRODUCTION")
+                    .provenanceStatus(crossReferencedList.size() > 1 ? "MULTIPLE_RELATED_SOURCES_FOUND" : "ORIGINAL_REPORT_FOUND")
+                    .evidenceTier(tier)
                     .distortionAnalysis(isContradicted ?
                             "Claim derived from a verified news event reported by " + bestSource + ", but altered: " + bestContradiction.getReason() :
                             "Claim faithfully matches verified reporting originally published by " + bestSource + ".")
                     .crossReferencedConsensus(isContradicted ?
                             "Contradicted across accredited news wire reports." :
-                            "Cross-referenced and corroborated across " + Math.max(1, crossReferencedList.size()) + " accredited news wire agencies.")
+                            "Cross-referenced and corroborated across " + crossReferencedList.size() + " accredited news wire agencies.")
                     .originMatchConfidence(matchPct)
                     .build();
 
-            if (isContradicted) {
-                return Optional.of(ExternalFactResult.builder()
-                        .topic(bestTitle)
-                        .snippet("Contradicted by verified press reporting from " + bestSource + ": \"" + bestTitle + "\". " + bestContradiction.getReason())
-                        .sourceName(bestSource)
-                        .sourceDomain(resolvedDomain)
-                        .sourceUrl(bestLink != null ? bestLink : (bestSourceUrl != null ? bestSourceUrl : "https://news.google.com"))
-                        .isAuthenticCorroboration(false)
-                        .isContradiction(true)
-                        .contradictionDetail(bestContradiction.getReason())
-                        .credibilityScore(cred)
-                        .matchPercentage(matchPct)
-                        .originDiscovery(originDiscovery)
-                        .crossReferencedSources(crossReferencedList)
-                        .build());
-            }
-
             return Optional.of(ExternalFactResult.builder()
                     .topic(bestTitle)
-                    .snippet("Corroborated by verified press reporting from " + bestSource + ": \"" + bestTitle + "\".")
+                    .snippet(isContradicted ?
+                            "Contradicted by verified press reporting from " + bestSource + ": \"" + bestTitle + "\". " + bestContradiction.getReason() :
+                            "Corroborated by verified press reporting from " + bestSource + ": \"" + bestTitle + "\".")
+                    .sourceUrl(bestLink)
                     .sourceName(bestSource)
-                    .sourceDomain(resolvedDomain)
-                    .sourceUrl(bestLink != null ? bestLink : (bestSourceUrl != null ? bestSourceUrl : "https://news.google.com"))
-                    .isAuthenticCorroboration(true)
-                    .isContradiction(false)
+                    .sourceDomain(bestDomain)
+                    .isAuthenticCorroboration(!isContradicted)
+                    .isContradiction(isContradicted)
+                    .contradictionDetail(isContradicted ? bestContradiction.getReason() : null)
                     .credibilityScore(cred)
                     .matchPercentage(matchPct)
                     .originDiscovery(originDiscovery)
                     .crossReferencedSources(crossReferencedList)
+                    .evidenceClusters(clusters)
                     .build());
         }
 
         return Optional.empty();
+    }
+
+    private List<EvidenceCluster> buildEvidenceClusters(List<SourceEvidence> sources, boolean isContradicted) {
+        List<EvidenceCluster> clusters = new ArrayList<>();
+        if (sources.isEmpty()) return clusters;
+
+        List<String> affiliated = sources.stream()
+                .map(SourceEvidence::getSourceName)
+                .collect(Collectors.toList());
+
+        String primaryOutlet = sources.get(0).getSourceName();
+
+        clusters.add(EvidenceCluster.builder()
+                .clusterId("CLUSTER-WIRE-01")
+                .clusterTheme("Tier-1 Mainstream Wire & Press Reporting")
+                .primaryOutlet(primaryOutlet)
+                .affiliatedOutlets(affiliated)
+                .sourceCount(sources.size())
+                .independenceRating(sources.size() >= 3 ? 90.0 : 70.0)
+                .consensusStance(isContradicted ? "CONTRADICTED" : "SUPPORTED")
+                .evidenceTier("LEVEL_2_SECONDARY")
+                .build());
+
+        return clusters;
     }
 
     public static class ContradictionCheck {
@@ -302,7 +298,6 @@ public class ExternalFactCheckService {
         String a = articleTitle.toLowerCase().trim();
 
         // 1. Negation / Zero Quantifier vs. Confirmed Event Casualties
-        // Query asserts: "none", "no one", "nobody", "zero", "0", "no casualties", "killed none", "not killed", "no deaths"
         boolean qHasZeroCasualties = q.contains(" none") || q.startsWith("none ") || q.contains(" zero ") || q.contains(" 0 ") ||
                                      q.contains("no one") || q.contains("nobody") || q.contains("no casualties") || q.contains("killed none") ||
                                      q.contains("died none") || q.contains("not killed") || q.contains("no deaths") || q.contains("zero dead");
@@ -327,7 +322,6 @@ public class ExternalFactCheckService {
         Integer aNum = extractFirstNumber(a, wordToNum);
 
         if (qNum != null && aNum != null && !qNum.equals(aNum)) {
-            // Check if the article actually contains qNum anywhere in text
             boolean articleContainsQueryNumber = a.contains(" " + qNum + " ") || a.contains(" " + qNum + ",") || a.contains(" " + qNum + ".");
             if (!articleContainsQueryNumber) {
                 if (qNum == 0 && aNum > 0) {
@@ -365,47 +359,64 @@ public class ExternalFactCheckService {
         return null;
     }
 
+    public String determineEvidenceTier(String sourceName, String domain) {
+        if (domain != null) {
+            String d = domain.toLowerCase();
+            if (d.endsWith(".gov") || d.endsWith(".gov.in") || d.endsWith(".nic.in") || d.contains("who.int") || d.contains("nasa.gov") || d.contains("isro.gov.in") || d.contains("un.org")) {
+                return "LEVEL_1_PRIMARY";
+            }
+            if (d.contains("snopes.com") || d.contains("politifact.com") || d.contains("factcheck.org") || d.contains("boomlive.in") || d.contains("altnews.in")) {
+                return "LEVEL_3_FACTCHECK";
+            }
+            if (d.contains("wikipedia.org") || d.contains("britannica.com")) {
+                return "LEVEL_4_REFERENCE";
+            }
+            if (d.contains("twitter.com") || d.contains("x.com") || d.contains("reddit.com") || d.contains("facebook.com") || d.contains("medium.com") || d.contains("blogspot.com")) {
+                return "LEVEL_5_USER_GENERATED";
+            }
+        }
+        return "LEVEL_2_SECONDARY";
+    }
+
+    private double calculateIndependenceRating(String sourceName, String domain) {
+        if (sourceName == null) return 70.0;
+        String lower = sourceName.toLowerCase();
+        if (lower.contains("reuters") || lower.contains("associated press") || lower.contains("pti") || lower.contains("afp") || lower.contains("bloomberg")) {
+            return 100.0; // Primary Wire Agency
+        }
+        if (lower.contains("the hindu") || lower.contains("bbc") || lower.contains("indian express") || lower.contains("nature")) {
+            return 85.0; // Major Original Reporting Newspaper
+        }
+        return 65.0; // Syndicated / Regional Outlets
+    }
+
     public boolean isTier1AccreditedPublisher(String sourceName, String domain) {
         if (sourceName == null && domain == null) return false;
         String s = (sourceName != null ? sourceName.toLowerCase() : "");
         String d = (domain != null ? domain.toLowerCase() : "");
 
-        // Explicitly reject blogs, substack, personal domains, and forums
         if (d.contains("substack.com") || d.contains("medium.com") || d.contains("blogspot.com") ||
             d.contains("wordpress.com") || d.contains("tumblr.com") || d.contains("tomaspueyo.com") ||
             d.contains("reddit.com") || d.contains("quora.com") || d.contains("twitter.com") || d.contains("x.com")) {
             return false;
         }
 
-        // Recognized Tier-1 accredited news wires, broadcasters, and reputable press networks
-        return s.contains("hindu") || s.contains("reuters") || s.contains("associated press") ||
-               s.contains("ap news") || s.contains("pti") || s.contains("ani") || s.contains("bbc") ||
-               s.contains("indian express") || s.contains("bloomberg") || s.contains("guardian") ||
-               s.contains("nature") || s.contains("science") || s.contains("ndtv") ||
-               s.contains("times of india") || s.contains("hindustan times") || s.contains("cnn") ||
-               s.contains("times now") || s.contains("india today") || s.contains("republic") ||
-               s.contains("zee") || s.contains("news18") || s.contains("business standard") ||
-               s.contains("economic times") || s.contains("abp") || s.contains("dna india") ||
-               s.contains("firstpost") || s.contains("mathrubhumi") || s.contains("asianet") ||
-               s.contains("free press journal") || s.contains("financial express") || s.contains("livemint") ||
-               s.contains("deccan herald") || s.contains("al jazeera") || s.contains("wall street journal") ||
-               s.contains("washington post") || s.contains("new york times") || s.contains("abc news") ||
-               s.contains("cbs news") || s.contains("nbc news") || s.contains("afp") ||
-               s.contains("snopes") || s.contains("politifact") ||
-               d.contains("thehindu.com") || d.contains("reuters.com") || d.contains("apnews.com") ||
-               d.contains("bbc.com") || d.contains("indianexpress.com") || d.contains("timesofindia.indiatimes.com") ||
-               d.contains("economictimes.indiatimes.com") || d.contains("ndtv.com") || d.contains("hindustantimes.com") ||
-               d.contains("indiatoday.in") || d.contains("bloomberg.com") || d.contains("theguardian.com") ||
-               d.contains("nature.com") || d.contains("republicworld.com") || d.contains("timesnownews.com") ||
-               d.contains("abplive.com") || d.contains("dnaindia.com") || d.contains("firstpost.com") ||
-               d.contains("snopes.com") || d.contains("politifact.com");
+        return d.contains("thehindu.com") || d.contains("reuters.com") || d.contains("apnews.com") ||
+                d.contains("bbc.com") || d.contains("indianexpress.com") || d.contains("ndtv.com") ||
+                d.contains("timesofindia.indiatimes.com") || d.contains("hindustantimes.com") ||
+                d.contains("indiatoday.in") || d.contains("deccanherald.com") || d.contains("bloomberg.com") ||
+                d.contains("theguardian.com") || d.contains("who.int") || d.contains("nasa.gov") ||
+                d.contains("nature.com") || d.contains("republicworld.com") || d.contains("timesnownews.com") ||
+                d.contains("abplive.com") || d.contains("dnaindia.com") || d.contains("firstpost.com") ||
+                d.contains("snopes.com") || d.contains("politifact.com") || d.contains("economictimes.indiatimes.com") ||
+                d.contains("business-standard.com") || d.contains("aniin.com") || d.contains("ptinews.com");
     }
 
-    private Optional<ExternalFactResult> queryWikipedia(String query) {
+    public Optional<ExternalFactResult> queryWikipedia(String query) {
         return queryWikipedia(query, query);
     }
 
-    private Optional<ExternalFactResult> queryWikipedia(String searchQuery, String originalQuery) {
+    public Optional<ExternalFactResult> queryWikipedia(String searchQuery, String originalQuery) {
         try {
             String simplifiedQuery = cleanSearchQuery(searchQuery);
             String[] words = simplifiedQuery.split(" ");
@@ -452,6 +463,8 @@ public class ExternalFactCheckService {
                             .originalUrl(pageUrl)
                             .publishedDate("Encyclopedic Public Record")
                             .provenanceType(isContradicted ? "ALTERED_DISTORTION" : (corroborates ? "AUTHENTIC_REPRODUCTION" : "UNVERIFIED_ORIGIN"))
+                            .provenanceStatus("SECONDARY_REPORT_FOUND")
+                            .evidenceTier("LEVEL_4_REFERENCE")
                             .distortionAnalysis(isContradicted ?
                                     "Claim derived from verified historical records for '" + title + "', but key facts were distorted: " + contradiction.getReason() :
                                     (corroborates ?
@@ -462,6 +475,17 @@ public class ExternalFactCheckService {
                                     "Corroborated by Wikimedia Foundation historical archives.")
                             .originMatchConfidence(isContradicted || corroborates ? 92.0 : 40.0)
                             .build();
+
+                    List<EvidenceCluster> wikiClusters = List.of(EvidenceCluster.builder()
+                            .clusterId("CLUSTER-REF-01")
+                            .clusterTheme("Wikimedia Knowledge Repository")
+                            .primaryOutlet("Wikipedia Foundation")
+                            .affiliatedOutlets(List.of("Wikipedia Knowledge Archive"))
+                            .sourceCount(1)
+                            .independenceRating(80.0)
+                            .consensusStance(isContradicted ? "CONTRADICTED" : "SUPPORTED")
+                            .evidenceTier("LEVEL_4_REFERENCE")
+                            .build());
 
                     return Optional.of(ExternalFactResult.builder()
                             .topic(title)
@@ -480,12 +504,17 @@ public class ExternalFactCheckService {
                             .crossReferencedSources(List.of(SourceEvidence.builder()
                                     .sourceName("Wikipedia Knowledge Archive")
                                     .domain("wikipedia.org")
+                                    .evidenceTier("LEVEL_4_REFERENCE")
                                     .articleTitle(title)
                                     .url(pageUrl)
                                     .credibilityRating(94)
                                     .matchPercentage(90.0)
+                                    .independenceRating(80.0)
+                                    .stance(isContradicted ? "REFUTED" : (corroborates ? "SUPPORTED" : "UNCERTAIN"))
                                     .verdictBySource(isContradicted ? "Contradicted / False" : (corroborates ? "Verified True" : "Unverified"))
+                                    .clusterId("CLUSTER-REF-01")
                                     .build()))
+                            .evidenceClusters(wikiClusters)
                             .build());
                 }
             }
@@ -500,7 +529,6 @@ public class ExternalFactCheckService {
         String sLower = snippet.toLowerCase();
         String qLower = query.toLowerCase();
 
-        // 1. Death / Passing assertion
         boolean claimsDeath = qLower.contains("passed away") || qLower.contains("died") || 
                               qLower.contains("dead") || qLower.contains("assassinated") || 
                               qLower.contains("killed") || qLower.contains("death");
@@ -513,13 +541,11 @@ public class ExternalFactCheckService {
             }
         }
 
-        // 2. Cure / Miracle claim
         boolean claimsCure = qLower.contains("cure") || qLower.contains("cures") || qLower.contains("miracle");
         if (claimsCure && !sLower.contains("cure") && !sLower.contains("therapy") && !sLower.contains("approved")) {
             return false;
         }
 
-        // 3. Significant token overlap
         return calculateQueryArticleOverlap(query, title + " " + snippet) >= 0.30;
     }
 
