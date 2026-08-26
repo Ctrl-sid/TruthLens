@@ -7,6 +7,7 @@ import ImageInput from './components/InputTabs/ImageInput';
 import TruthScoreGauge from './components/Results/TruthScoreGauge';
 import RationaleCard from './components/Results/RationaleCard';
 import ClaimOriginCard from './components/Results/ClaimOriginCard';
+import ExplainabilityCard from './components/Results/ExplainabilityCard';
 import NlpAnalysisCard from './components/Results/NlpAnalysisCard';
 import SourceEvidenceList from './components/Results/SourceEvidenceList';
 import ImageHeatmap from './components/Results/ImageHeatmap';
@@ -27,7 +28,7 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState('TEXT'); // TEXT, URL, IMAGE
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
-  const [activeResultTab, setActiveResultTab] = useState('origin'); // origin, nlp, sources, image
+  const [activeResultTab, setActiveResultTab] = useState('explainability'); // explainability, origin, sources, nlp, image
 
   // Modals & Drawers
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -241,22 +242,22 @@ function AppContent() {
                 </div>
 
                 {/* Deep Analysis Tabs */}
-                <div className="glass-card p-4" style={{ background: 'rgba(15, 23, 42, 0.6)' }}>
-                  <ul className="nav nav-tabs border-secondary border-opacity-25 mb-3 gap-2">
+                <div className="glass-card p-4" style={{ background: 'rgba(15, 23, 42, 0.6)' }}>                  {/* Deep Analysis Tabs Navigation */}
+                  <ul className="nav nav-tabs border-secondary border-opacity-25 mb-3 flex-nowrap overflow-x-auto pb-1">
+                    <li className="nav-item">
+                      <button
+                        className={`nav-link text-light opacity-75 border-0 ${activeResultTab === 'explainability' ? 'active text-cyan fw-bold border-bottom border-cyan' : ''}`}
+                        onClick={() => setActiveResultTab('explainability')}
+                      >
+                        <i className="bi bi-shield-check me-1"></i> Explainability & Reasoning
+                      </button>
+                    </li>
                     <li className="nav-item">
                       <button
                         className={`nav-link text-light opacity-75 border-0 ${activeResultTab === 'origin' ? 'active text-cyan fw-bold border-bottom border-cyan' : ''}`}
                         onClick={() => setActiveResultTab('origin')}
                       >
-                        <i className="bi bi-compass me-1"></i> Claim Origin & Provenance
-                      </button>
-                    </li>
-                    <li className="nav-item">
-                      <button
-                        className={`nav-link text-light opacity-75 border-0 ${activeResultTab === 'nlp' ? 'active text-cyan fw-bold border-bottom border-cyan' : ''}`}
-                        onClick={() => setActiveResultTab('nlp')}
-                      >
-                        <i className="bi bi-cpu me-1"></i> NLP Diagnostics
+                        <i className="bi bi-compass me-1"></i> Provenance Radar & Origin
                       </button>
                     </li>
                     <li className="nav-item">
@@ -264,7 +265,15 @@ function AppContent() {
                         className={`nav-link text-light opacity-75 border-0 ${activeResultTab === 'sources' ? 'active text-cyan fw-bold border-bottom border-cyan' : ''}`}
                         onClick={() => setActiveResultTab('sources')}
                       >
-                        <i className="bi bi-diagram-3 me-1"></i> Wire Consensus ({result.sources?.length || 0})
+                        <i className="bi bi-diagram-3 me-1"></i> Wire Consensus ({result.sources ? result.sources.length : 0})
+                      </button>
+                    </li>
+                    <li className="nav-item">
+                      <button
+                        className={`nav-link text-light opacity-75 border-0 ${activeResultTab === 'nlp' ? 'active text-cyan fw-bold border-bottom border-cyan' : ''}`}
+                        onClick={() => setActiveResultTab('nlp')}
+                      >
+                        <i className="bi bi-cpu me-1"></i> NLP & Diagnostics
                       </button>
                     </li>
                     {result.imageAnalysis && (
@@ -273,17 +282,24 @@ function AppContent() {
                           className={`nav-link text-light opacity-75 border-0 ${activeResultTab === 'image' ? 'active text-cyan fw-bold border-bottom border-cyan' : ''}`}
                           onClick={() => setActiveResultTab('image')}
                         >
-                          <i className="bi bi-image me-1"></i> Image Forensic Heatmap
+                          <i className="bi bi-image me-1"></i> Image Forensics
                         </button>
                       </li>
                     )}
                   </ul>
 
-                  {activeResultTab === 'origin' && (
-                    <ClaimOriginCard originDiscovery={result.originDiscovery} userClaim={result.claimSummary} />
+                  {activeResultTab === 'explainability' && (
+                    <ExplainabilityCard result={result} />
                   )}
-                  {activeResultTab === 'nlp' && <NlpAnalysisCard nlpData={result.nlpAnalysis} />}
+                  {activeResultTab === 'origin' && (
+                    <ClaimOriginCard 
+                      originDiscovery={result.originDiscovery} 
+                      userClaim={result.claimSummary}
+                      evidenceClusters={result.evidenceClusters}
+                    />
+                  )}
                   {activeResultTab === 'sources' && <SourceEvidenceList sources={result.sources} />}
+                  {activeResultTab === 'nlp' && <NlpAnalysisCard nlpData={result.nlpAnalysis} />}
                   {activeResultTab === 'image' && <ImageHeatmap imageAnalysis={result.imageAnalysis} />}
                 </div>
               </div>
