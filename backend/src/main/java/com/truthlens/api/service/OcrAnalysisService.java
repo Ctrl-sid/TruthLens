@@ -16,6 +16,8 @@ public class OcrAnalysisService {
             return ImageIntegrityAnalysis.builder()
                     .detectedHeadlineText(userHeadline != null && !userHeadline.isBlank() ? userHeadline : "No readable headline detected in image")
                     .manipulationProbability(50.0)
+                    .manipulationVerdict("Potential Image Manipulation Indicators (Inconclusive)")
+                    .imageContextStatus("Unverified Visual Context")
                     .exifStatus("Missing EXIF Metadata")
                     .anomalyFlags(List.of("Unreadable or empty image payload"))
                     .heatmapOverlayUrl("https://images.unsplash.com/photo-1507499739999-097706ad8914?w=600&auto=format&fit=crop")
@@ -50,9 +52,19 @@ public class OcrAnalysisService {
             anomalyFlags.add("Sensationalist Lexical Markers in Image Headline Overlay");
         }
 
+        String manipulationVerdict = manipulationProbability > 65 ?
+                "Potential Image Manipulation Indicators Detected" :
+                "Clean Visual Compression Profile";
+
+        String imageContextStatus = manipulationProbability > 65 ?
+                "Misleading / Repurposed Visual Context Likely" :
+                "Context Matches Claim Topic";
+
         return ImageIntegrityAnalysis.builder()
                 .detectedHeadlineText(extractedHeadline)
                 .manipulationProbability(manipulationProbability)
+                .manipulationVerdict(manipulationVerdict)
+                .imageContextStatus(imageContextStatus)
                 .exifStatus(manipulationProbability > 65 ? "Stripped / Edited Metadata" : "Authentic Sensor Metadata")
                 .anomalyFlags(anomalyFlags)
                 .heatmapOverlayUrl("https://images.unsplash.com/photo-1507499739999-097706ad8914?w=600&auto=format&fit=crop")
@@ -63,4 +75,3 @@ public class OcrAnalysisService {
         return analyzeImageInput(imageContent, null);
     }
 }
-
