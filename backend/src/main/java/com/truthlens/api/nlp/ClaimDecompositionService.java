@@ -5,7 +5,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -16,7 +17,7 @@ public class ClaimDecompositionService {
 
     private static final Pattern NUMERICAL_PATTERN = Pattern.compile("(?i)\\b(?:killed|died|injured|fatalities|casualties|dead|toll|worth|cost|received|acquired|spent|recorded|amounted)\\s+(?:to\\s+)?(?:[0-9]+|none|zero|nil|no\\s+one|several|dozens|hundreds|thousands|millions|billions)\\b(?:\\s+(?:people|civilians|soldiers|officers|dollars|rupees|crore))?");
     private static final Pattern TEMPORAL_PATTERN = Pattern.compile("(?i)\\b(?:happened|occurred|took\\s+place|in|on|during|since|at|around)\\s+(?:the\\s+year\\s+)?(?:19|20)\\d{2}|\\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\\s+\\d{1,2}(?:,\\s*(?:19|20)\\d{2})?\\b");
-    private static final Pattern LOCATION_PATTERN = Pattern.compile("(?i)\\b(?:in|at|near|across|off\\s+the\\s+coast\\s+of)\\s+([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)*)\\b");
+    private static final Pattern NEGATION_PATTERN = Pattern.compile("(?i)\\b(not|did\\s+not|never|no|none|nobody|zero|denied|denies|rejected|rejects|dismissed|failed\\s+to|without)\\b");
 
     public List<DecomposedClaim> decompose(String text) {
         List<DecomposedClaim> subClaims = new ArrayList<>();
@@ -37,13 +38,21 @@ public class ClaimDecompositionService {
                 String fullProposition = (i > 0 && !hasNounSubject(segment) && !subjectContext.isBlank()) ?
                         subjectContext + " " + segment : segment;
 
+                String type = classifyClaimType(fullProposition);
+                String centrality = determineCentrality(type, i);
+                double weight = determineCentralityWeight(centrality);
+                boolean isNegated = NEGATION_PATTERN.matcher(fullProposition).find();
+
                 subClaims.add(DecomposedClaim.builder()
                         .claimText(capitalizeFirst(fullProposition))
-                        .claimType(classifyClaimType(fullProposition))
+                        .claimType(type)
+                        .claimCentrality(centrality)
+                        .claimImportanceWeight(weight)
                         .claimScore(75) // Base pending verification
                         .claimVerdict("PENDING")
                         .stance("UNCERTAIN")
                         .evidenceSummary("Pending independent sub-claim cross-referencing.")
+                        .isNegated(isNegated)
                         .build());
             }
         }
@@ -58,37 +67,71 @@ public class ClaimDecompositionService {
                 String numFact = numMatcher.group(0);
                 String tempFact = tempMatcher.group(0);
 
+                String text1 = capitalizeFirst(subjectContext + " " + numFact);
+                String text2 = capitalizeFirst(subjectContext + " " + tempFact);
+
                 subClaims.add(DecomposedClaim.builder()
-                        .claimText(capitalizeFirst(subjectContext + " " + numFact))
+                        .claimText(text1)
                         .claimType("CASUALTY_COUNT")
+                        .claimCentrality("PRIMARY_CLAIM")
+                        .claimImportanceWeight(0.60)
                         .claimScore(75)
                         .claimVerdict("PENDING")
                         .stance("UNCERTAIN")
                         .evidenceSummary("Numerical/Casualty sub-claim component.")
+                        .isNegated(NEGATION_PATTERN.matcher(text1).find())
                         .build());
 
                 subClaims.add(DecomposedClaim.builder()
-                        .claimText(capitalizeFirst(subjectContext + " " + tempFact))
+                        .claimText(text2)
                         .claimType("TEMPORAL_DATE")
+                        .claimCentrality("SUPPORTING_CLAIM")
+                        .claimImportanceWeight(0.40)
                         .claimScore(75)
                         .claimVerdict("PENDING")
                         .stance("UNCERTAIN")
                         .evidenceSummary("Temporal/Date sub-claim component.")
+                        .isNegated(NEGATION_PATTERN.matcher(text2).find())
                         .build());
             } else {
                 // Single atomic claim
+                String type = classifyClaimType(cleaned);
+                String centrality = "PRIMARY_CLAIM";
+                boolean isNegated = NEGATION_PATTERN.matcher(cleaned).find();
+
                 subClaims.add(DecomposedClaim.builder()
                         .claimText(capitalizeFirst(cleaned))
-                        .claimType(classifyClaimType(cleaned))
+                        .claimType(type)
+                        .claimCentrality(centrality)
+                        .claimImportanceWeight(1.00)
                         .claimScore(75)
                         .claimVerdict("PENDING")
                         .stance("UNCERTAIN")
                         .evidenceSummary("Atomic factual statement.")
+                        .isNegated(isNegated)
                         .build());
             }
         }
 
         return subClaims;
+    }
+
+    private String determineCentrality(String claimType, int index) {
+        if ("CASUALTY_COUNT".equals(claimType) || "EVENT_OCCURRENCE".equals(claimType) || "STATISTICAL_CLAIM".equals(claimType) || index == 0) {
+            return "PRIMARY_CLAIM";
+        }
+        if ("LOCATION_FACT".equals(claimType) || "TEMPORAL_DATE".equals(claimType)) {
+            return "SUPPORTING_CLAIM";
+        }
+        return "MINOR_CLAIM";
+    }
+
+    private double determineCentralityWeight(String centrality) {
+        switch (centrality) {
+            case "PRIMARY_CLAIM": return 0.60;
+            case "SUPPORTING_CLAIM": return 0.30;
+            default: return 0.10;
+        }
     }
 
     private String classifyClaimType(String proposition) {
@@ -104,6 +147,9 @@ public class ClaimDecompositionService {
         }
         if (lower.contains("said") || lower.contains("announced") || lower.contains("claimed") || lower.contains("stated") || lower.contains("denied")) {
             return "ATTRIBUTION";
+        }
+        if (lower.contains("percent") || lower.contains("%") || lower.contains("rate") || lower.contains("increase") || lower.contains("decrease")) {
+            return "STATISTICAL_CLAIM";
         }
         return "EVENT_OCCURRENCE";
     }
