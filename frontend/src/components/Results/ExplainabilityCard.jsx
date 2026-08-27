@@ -9,7 +9,12 @@ import {
   Split, 
   Scale, 
   FileText,
-  AlertCircle
+  AlertCircle,
+  Radio,
+  Clock,
+  MapPin,
+  Tag,
+  Quote
 } from 'lucide-react';
 
 export default function ExplainabilityCard({ result }) {
@@ -22,29 +27,76 @@ export default function ExplainabilityCard({ result }) {
   const detectedDiffs = explainability.detectedDifferences || [];
   const matrix = explainability.evidenceMatrix || [];
   const confidence = result.confidence || explainability.confidenceLevel || 'MEDIUM';
+  const confidenceScore = result.confidenceScore || explainability.confidenceScore || 75;
+  const severity = result.contradictionSeverity || 'NONE';
 
-  const getConfidenceBadge = (conf) => {
+  const getConfidenceBadge = (conf, score) => {
     switch (conf?.toUpperCase()) {
       case 'HIGH':
-        return <span className="px-3 py-1 text-xs font-semibold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5" /> High Confidence</span>;
+        return (
+          <span className="px-3 py-1 text-xs font-semibold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5" /> High Confidence ({score}%)
+          </span>
+        );
       case 'LOW':
-        return <span className="px-3 py-1 text-xs font-semibold rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" /> Low Confidence</span>;
+        return (
+          <span className="px-3 py-1 text-xs font-semibold rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5" /> Low Confidence ({score}%)
+          </span>
+        );
       default:
-        return <span className="px-3 py-1 text-xs font-semibold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5"><HelpCircle className="w-3.5 h-3.5" /> Medium Confidence</span>;
+        return (
+          <span className="px-3 py-1 text-xs font-semibold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
+            <HelpCircle className="w-3.5 h-3.5" /> Medium Confidence ({score}%)
+          </span>
+        );
     }
   };
 
   const getStanceBadge = (stance) => {
     switch (stance?.toUpperCase()) {
-      case 'SUPPORTED':
       case 'CONFIRMED':
-        return <span className="px-2 py-0.5 text-xs font-medium rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">SUPPORTED</span>;
+        return <span className="px-2 py-0.5 text-[11px] font-bold rounded bg-emerald-500/25 text-emerald-300 border border-emerald-500/40">CONFIRMED</span>;
+      case 'SUPPORTED':
+        return <span className="px-2 py-0.5 text-[11px] font-medium rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">SUPPORTED</span>;
+      case 'ARTICLE_REPORTS_CLAIM':
+        return <span className="px-2 py-0.5 text-[11px] font-medium rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">REPORTS CLAIM</span>;
+      case 'PARTIALLY_SUPPORTED':
+        return <span className="px-2 py-0.5 text-[11px] font-medium rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">PARTIAL</span>;
+      case 'NOT_MENTIONED':
+        return <span className="px-2 py-0.5 text-[11px] font-medium rounded bg-slate-500/20 text-slate-400 border border-slate-600/30">NOT MENTIONED</span>;
+      case 'DENIED':
       case 'REFUTED':
       case 'CONTRADICTED':
-      case 'DENIED':
-        return <span className="px-2 py-0.5 text-xs font-medium rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">REFUTED</span>;
+        return <span className="px-2 py-0.5 text-[11px] font-bold rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">REFUTED</span>;
       default:
-        return <span className="px-2 py-0.5 text-xs font-medium rounded bg-slate-500/20 text-slate-300 border border-slate-500/30">UNCERTAIN</span>;
+        return <span className="px-2 py-0.5 text-[11px] font-medium rounded bg-slate-500/20 text-slate-300 border border-slate-500/30">UNCERTAIN</span>;
+    }
+  };
+
+  const getCentralityBadge = (centrality, weight) => {
+    switch (centrality) {
+      case 'PRIMARY_CLAIM':
+        return <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">Primary Core Fact (60%)</span>;
+      case 'SUPPORTING_CLAIM':
+        return <span className="px-2 py-0.5 text-[10px] font-medium uppercase rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">Supporting Detail (30%)</span>;
+      default:
+        return <span className="px-2 py-0.5 text-[10px] font-medium uppercase rounded bg-slate-500/20 text-slate-400 border border-slate-600/30">Context (10%)</span>;
+    }
+  };
+
+  const getSeverityBadge = (sev) => {
+    if (!sev || sev === 'NONE') return null;
+    switch (sev) {
+      case 'MINOR_DISCREPANCY':
+        return <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">Minor Variance (&lt;5%)</span>;
+      case 'MODERATE_CONTRADICTION':
+        return <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30">Moderate Contradiction</span>;
+      case 'MAJOR_CONTRADICTION':
+      case 'DIRECT_FACTUAL_REVERSAL':
+        return <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-rose-500/25 text-rose-300 border border-rose-500/40">Direct Factual Reversal</span>;
+      default:
+        return null;
     }
   };
 
@@ -71,14 +123,15 @@ export default function ExplainabilityCard({ result }) {
       <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-900/90 via-slate-800/80 to-slate-900/90 border border-slate-700/60 shadow-xl backdrop-blur-md">
         <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-700/50">
           <div>
-            <span className="text-xs uppercase tracking-wider font-bold text-sky-400">TruthLens Explainability Layer</span>
+            <span className="text-xs uppercase tracking-wider font-bold text-sky-400">TruthLens Explainability & Decision Layer</span>
             <h3 className="text-lg font-bold text-white mt-0.5 flex items-center gap-2">
               <Scale className="w-5 h-5 text-sky-400" />
               Evidence Synthesis & Reasoning Matrix
             </h3>
           </div>
           <div className="flex items-center gap-2">
-            {getConfidenceBadge(confidence)}
+            {getSeverityBadge(severity)}
+            {getConfidenceBadge(confidence, confidenceScore)}
           </div>
         </div>
 
@@ -145,9 +198,9 @@ export default function ExplainabilityCard({ result }) {
           <div className="flex items-center justify-between pb-2 border-b border-slate-700/50">
             <h4 className="text-sm font-bold text-white flex items-center gap-2">
               <Split className="w-4 h-4 text-purple-400" />
-              Claim Decomposition & Atomic Verification ({subClaims.length} Sub-Claims)
+              Claim Decomposition & Centrality Weighting ({subClaims.length} Sub-Claims)
             </h4>
-            <span className="text-xs text-slate-400">Independently Evaluated Propositions</span>
+            <span className="text-xs text-slate-400">Centrality-Weighted Fusion Model</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
@@ -156,20 +209,22 @@ export default function ExplainabilityCard({ result }) {
                 key={idx} 
                 className={`p-3.5 rounded-xl border ${
                   sub.claimVerdict === 'VERIFIED' ? 'bg-emerald-950/20 border-emerald-500/30' :
+                  sub.claimVerdict === 'MOSTLY_VERIFIED' ? 'bg-emerald-950/15 border-emerald-500/25' :
                   sub.claimVerdict === 'REFUTED' ? 'bg-rose-950/20 border-rose-500/30' :
                   'bg-slate-950/40 border-slate-700/50'
                 }`}
               >
                 <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <span className="text-[11px] uppercase font-bold tracking-wider text-slate-400">
-                    Claim #{idx + 1} • {sub.claimType?.replace('_', ' ')}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {getCentralityBadge(sub.claimCentrality, sub.claimImportanceWeight)}
+                    <span className="text-[11px] text-slate-400 font-mono">#{idx + 1}</span>
+                  </div>
                   {getStanceBadge(sub.stance)}
                 </div>
                 <p className="text-sm font-medium text-white mb-2">"{sub.claimText}"</p>
                 <div className="text-xs text-slate-300 flex items-center justify-between pt-2 border-t border-slate-800/80">
                   <span className="truncate pr-2">{sub.evidenceSummary}</span>
-                  <span className="font-bold text-sky-400 shrink-0">{sub.claimScore}%</span>
+                  <span className="font-bold text-sky-400 shrink-0">{sub.claimScore != null ? `${sub.claimScore}%` : 'N/A'}</span>
                 </div>
               </div>
             ))}
