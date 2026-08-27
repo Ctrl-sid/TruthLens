@@ -10,11 +10,12 @@ public class ClaimRelationAnalyzer {
     public enum StanceRelation {
         SUPPORTED,
         CONFIRMED,
-        DENIED,
+        ARTICLE_REPORTS_CLAIM,
         REFUTED,
-        CONTRADICTED,
-        UNCERTAIN,
-        NOT_MENTIONED
+        DENIED,
+        PARTIALLY_SUPPORTED,
+        NOT_MENTIONED,
+        UNCERTAIN
     }
 
     public StanceRelation analyzeRelation(String claim, String evidenceHeadline, boolean isContradicted) {
@@ -24,14 +25,9 @@ public class ClaimRelationAnalyzer {
         String cLower = claim.toLowerCase().trim();
         String eLower = evidenceHeadline.toLowerCase().trim();
 
-        // Check for explicit denial verbs in headline
+        // Check for official denial
         if (eLower.contains("denies") || eLower.contains("denied") || eLower.contains("rejects") || eLower.contains("dismisses") || eLower.contains("refutes")) {
             return StanceRelation.DENIED;
-        }
-
-        // Check for official confirmation verbs
-        if (eLower.contains("confirms") || eLower.contains("confirmed") || eLower.contains("affirms") || eLower.contains("verifies") || eLower.contains("announces")) {
-            return StanceRelation.CONFIRMED;
         }
 
         // Check for fact-check debunking
@@ -39,7 +35,42 @@ public class ClaimRelationAnalyzer {
             return StanceRelation.REFUTED;
         }
 
-        // Positive corroboration
+        // Check for reporting an unverified allegation / claim
+        if (eLower.contains("claims") || eLower.contains("alleges") || eLower.contains("alleged") || eLower.contains("purported") || eLower.contains("according to")) {
+            return StanceRelation.ARTICLE_REPORTS_CLAIM;
+        }
+
+        // Check for official confirmation
+        if (eLower.contains("confirms") || eLower.contains("confirmed") || eLower.contains("affirms") || eLower.contains("verifies") || eLower.contains("official statement")) {
+            return StanceRelation.CONFIRMED;
+        }
+
+        // Check if evidence headline is completely unrelated to specific predicate
+        if (!hasSignificantOverlap(cLower, eLower)) {
+            return StanceRelation.NOT_MENTIONED;
+        }
+
         return StanceRelation.SUPPORTED;
+    }
+
+    private boolean hasSignificantOverlap(String claim, String evidence) {
+        String[] words = claim.split("[^a-zA-Z0-9]+");
+        int matchCount = 0;
+        int totalSignificant = 0;
+
+        for (String w : words) {
+            if (w.length() > 3 && !isStopWord(w)) {
+                totalSignificant++;
+                if (evidence.contains(w)) {
+                    matchCount++;
+                }
+            }
+        }
+
+        return totalSignificant == 0 || ((double) matchCount / totalSignificant) >= 0.25;
+    }
+
+    private boolean isStopWord(String word) {
+        return word.matches("^(the|and|for|with|from|this|that|have|been|were|they|what|when|where|which|about)$");
     }
 }
