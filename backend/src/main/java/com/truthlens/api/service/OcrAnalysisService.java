@@ -16,9 +16,9 @@ public class OcrAnalysisService {
             return ImageIntegrityAnalysis.builder()
                     .detectedHeadlineText(userHeadline != null && !userHeadline.isBlank() ? userHeadline : "No readable headline detected in image")
                     .manipulationProbability(50.0)
-                    .manipulationVerdict("Potential Image Manipulation Indicators (Inconclusive)")
+                    .manipulationVerdict("Image Forensic Indicators: Inconclusive / Unreadable Payload")
                     .imageContextStatus("Unverified Visual Context")
-                    .exifStatus("Missing EXIF Metadata")
+                    .exifStatus("Stripped by Platform (Neutral)")
                     .anomalyFlags(List.of("Unreadable or empty image payload"))
                     .heatmapOverlayUrl("https://images.unsplash.com/photo-1507499739999-097706ad8914?w=600&auto=format&fit=crop")
                     .build();
@@ -53,19 +53,23 @@ public class OcrAnalysisService {
         }
 
         String manipulationVerdict = manipulationProbability > 65 ?
-                "Potential Image Manipulation Indicators Detected" :
-                "Clean Visual Compression Profile";
+                "Potential Compression Anomalies Detected" :
+                "Image Forensic Indicators: Clean Compression Profile";
 
         String imageContextStatus = manipulationProbability > 65 ?
                 "Misleading / Repurposed Visual Context Likely" :
                 "Context Matches Claim Topic";
+
+        String exifStatus = manipulationProbability > 65 ?
+                "Edited Metadata Detected" :
+                (isDataUrl ? "Sensor Metadata Available" : "Stripped by Platform (Neutral)");
 
         return ImageIntegrityAnalysis.builder()
                 .detectedHeadlineText(extractedHeadline)
                 .manipulationProbability(manipulationProbability)
                 .manipulationVerdict(manipulationVerdict)
                 .imageContextStatus(imageContextStatus)
-                .exifStatus(manipulationProbability > 65 ? "Stripped / Edited Metadata" : "Authentic Sensor Metadata")
+                .exifStatus(exifStatus)
                 .anomalyFlags(anomalyFlags)
                 .heatmapOverlayUrl("https://images.unsplash.com/photo-1507499739999-097706ad8914?w=600&auto=format&fit=crop")
                 .build();
