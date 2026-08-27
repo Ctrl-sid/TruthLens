@@ -15,6 +15,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -40,6 +42,7 @@ public class ExternalFactCheckService {
         private boolean isAuthenticCorroboration;
         private boolean isContradiction;
         private String contradictionDetail;
+        private String contradictionSeverity; // NONE, MINOR_DISCREPANCY, MODERATE_CONTRADICTION, MAJOR_CONTRADICTION, DIRECT_FACTUAL_REVERSAL
         private int credibilityScore;
         private double matchPercentage;
         private ClaimOriginDiscovery originDiscovery;
@@ -52,19 +55,19 @@ public class ExternalFactCheckService {
     public Optional<ExternalFactResult> queryExternalKnowledge(String query) {
         if (query == null || query.isBlank()) return Optional.empty();
 
-        // 1. Direct Live News Wire Search
+        // 1. Direct Live News Wire Search (Candidate Discovery)
         Optional<ExternalFactResult> liveNewsMatch = queryLiveNewsWires(query, query);
         if (liveNewsMatch.isPresent()) {
             return liveNewsMatch;
         }
 
-        // 2. Direct Wikipedia OpenSearch (Level 4 Reference)
+        // 2. Direct Wikipedia OpenSearch (Level 4 Reference Archive)
         Optional<ExternalFactResult> wikiMatch = queryWikipedia(query, query);
         if (wikiMatch.isPresent()) {
             return wikiMatch;
         }
 
-        // 3. Fallback: If claim contains zero-quantifiers or modifiers, search for base event
+        // 3. Fallback: If claim contains zero-quantifiers or modifiers, search for base event and cross-reference
         String coreEventQuery = extractCoreEventQuery(query);
         if (!coreEventQuery.equalsIgnoreCase(query) && coreEventQuery.length() >= 4) {
             Optional<ExternalFactResult> liveEventMatch = queryLiveNewsWires(coreEventQuery, query);
@@ -113,7 +116,7 @@ public class ExternalFactCheckService {
                 return parseGoogleNewsRss(response.body(), originalQuery);
             }
         } catch (Exception e) {
-            log.debug("Live news wire search skipped or timed out: {}", e.getMessage());
+            log.debug("Live news wire candidate search skipped or timed out: {}", e.getMessage());
         }
         return Optional.empty();
     }
@@ -158,11 +161,10 @@ public class ExternalFactCheckService {
                 domain = extractDomainFromSourceName(source);
             }
 
-            // Retrieval quality filtering: Check token overlap against query
+            // Candidate Discovery Overlap Check
             double overlap = calculateQueryArticleOverlap(originalQuery, title);
             if (overlap < 0.25) {
-                // Skip completely irrelevant search results
-                continue;
+                continue; // Filter out low-relevance noise
             }
 
             if (!isTier1AccreditedPublisher(source, domain)) {
@@ -205,6 +207,7 @@ public class ExternalFactCheckService {
 
         if (bestTitle != null && bestOverlap >= 0.35) {
             boolean isContradicted = bestContradiction != null && bestContradiction.isContradicted();
+            String severity = bestContradiction != null ? bestContradiction.getSeverity() : "NONE";
             int cred = determineSourceCredibility(bestSource);
             double matchPct = Math.round(bestOverlap * 1000.0) / 10.0;
             String bestDomain = extractDomain(bestSourceUrl != null ? bestSourceUrl : bestLink);
@@ -215,21 +218,28 @@ public class ExternalFactCheckService {
             // Group into Evidence Clusters
             List<EvidenceCluster> clusters = buildEvidenceClusters(crossReferencedList, isContradicted);
 
+            String claimIntegrity = !isContradicted ? "AUTHENTIC_REPRODUCTION" :
+                    ("MINOR_DISCREPANCY".equals(severity) ? "MINOR_VARIANCE" : "ALTERED_DISTORTION");
+
             ClaimOriginDiscovery originDiscovery = ClaimOriginDiscovery.builder()
                     .originalPublisher(bestSource)
+                    .earliestIdentifiedPublisher(bestSource)
                     .originalDomain(bestDomain)
                     .originalHeadline(bestTitle)
                     .originalUrl(bestLink)
                     .publishedDate("Verified Press Dispatch")
-                    .provenanceType(isContradicted ? "ALTERED_DISTORTION" : "AUTHENTIC_REPRODUCTION")
-                    .provenanceStatus(crossReferencedList.size() > 1 ? "MULTIPLE_RELATED_SOURCES_FOUND" : "ORIGINAL_REPORT_FOUND")
+                    .retrievalTimestamp(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
+                    .provenanceType(claimIntegrity)
+                    .provenanceStatus("EARLIEST_RELIABLE_SOURCE_FOUND")
+                    .claimIntegrity(claimIntegrity)
+                    .contradictionSeverity(severity)
                     .evidenceTier(tier)
                     .distortionAnalysis(isContradicted ?
-                            "Claim derived from a verified news event reported by " + bestSource + ", but altered: " + bestContradiction.getReason() :
-                            "Claim faithfully matches verified reporting originally published by " + bestSource + ".")
+                            "Claim derived from reporting by " + bestSource + ", with factual discrepancy (" + severity + "): " + bestContradiction.getReason() :
+                            "Claim aligns with verified reporting originally published by " + bestSource + ".")
                     .crossReferencedConsensus(isContradicted ?
                             "Contradicted across accredited news wire reports." :
-                            "Cross-referenced and corroborated across " + crossReferencedList.size() + " accredited news wire agencies.")
+                            "Cross-referenced across " + crossReferencedList.size() + " accredited news wire agencies.")
                     .originMatchConfidence(matchPct)
                     .build();
 
@@ -244,6 +254,7 @@ public class ExternalFactCheckService {
                     .isAuthenticCorroboration(!isContradicted)
                     .isContradiction(isContradicted)
                     .contradictionDetail(isContradicted ? bestContradiction.getReason() : null)
+                    .contradictionSeverity(severity)
                     .credibilityScore(cred)
                     .matchPercentage(matchPct)
                     .originDiscovery(originDiscovery)
@@ -272,7 +283,7 @@ public class ExternalFactCheckService {
                 .affiliatedOutlets(affiliated)
                 .sourceCount(sources.size())
                 .independenceRating(sources.size() >= 3 ? 90.0 : 70.0)
-                .consensusStance(isContradicted ? "CONTRADICTED" : "SUPPORTED")
+                .consensusStance(isContradicted ? "REFUTED" : "CONFIRMED")
                 .evidenceTier("LEVEL_2_SECONDARY")
                 .build());
 
@@ -281,23 +292,26 @@ public class ExternalFactCheckService {
 
     public static class ContradictionCheck {
         private final boolean contradicted;
+        private final String severity; // NONE, MINOR_DISCREPANCY, MODERATE_CONTRADICTION, MAJOR_CONTRADICTION, DIRECT_FACTUAL_REVERSAL
         private final String reason;
 
-        public ContradictionCheck(boolean contradicted, String reason) {
+        public ContradictionCheck(boolean contradicted, String severity, String reason) {
             this.contradicted = contradicted;
+            this.severity = severity != null ? severity : "NONE";
             this.reason = reason;
         }
 
         public boolean isContradicted() { return contradicted; }
+        public String getSeverity() { return severity; }
         public String getReason() { return reason; }
     }
 
     public ContradictionCheck detectContradiction(String query, String articleTitle) {
-        if (query == null || articleTitle == null) return new ContradictionCheck(false, null);
+        if (query == null || articleTitle == null) return new ContradictionCheck(false, "NONE", null);
         String q = query.toLowerCase().trim();
         String a = articleTitle.toLowerCase().trim();
 
-        // 1. Negation / Zero Quantifier vs. Confirmed Event Casualties
+        // 1. Direct Factual Reversal: Negation / Zero Quantifier vs. Confirmed Event Casualties
         boolean qHasZeroCasualties = q.contains(" none") || q.startsWith("none ") || q.contains(" zero ") || q.contains(" 0 ") ||
                                      q.contains("no one") || q.contains("nobody") || q.contains("no casualties") || q.contains("killed none") ||
                                      q.contains("died none") || q.contains("not killed") || q.contains("no deaths") || q.contains("zero dead");
@@ -306,7 +320,8 @@ public class ExternalFactCheckService {
         boolean aHasPositiveNumber = Pattern.compile("\\b(?:[1-9]\\d*|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|dozens?|scores|several|hundreds?)\\b", Pattern.CASE_INSENSITIVE).matcher(a).find();
 
         if (qHasZeroCasualties && aHasCasualties && aHasPositiveNumber) {
-            return new ContradictionCheck(true, "Claim asserts zero casualties ('none' / 'no one'), whereas verified reporting explicitly confirms fatalities in the incident.");
+            return new ContradictionCheck(true, "DIRECT_FACTUAL_REVERSAL",
+                    "Claim asserts zero casualties ('none' / 'no one'), whereas verified reporting explicitly confirms fatalities in the incident.");
         }
 
         // 2. Numerical Disparity on Extracted Quantifiers
@@ -325,9 +340,20 @@ public class ExternalFactCheckService {
             boolean articleContainsQueryNumber = a.contains(" " + qNum + " ") || a.contains(" " + qNum + ",") || a.contains(" " + qNum + ".");
             if (!articleContainsQueryNumber) {
                 if (qNum == 0 && aNum > 0) {
-                    return new ContradictionCheck(true, "Claim asserts zero / none, whereas verified coverage confirms " + aNum + ".");
-                } else if (Math.abs(qNum - aNum) >= 3 && Math.max(qNum, aNum) >= 5) {
-                    return new ContradictionCheck(true, "Significant discrepancy in reported figures (claim states " + qNum + ", news reports " + aNum + ").");
+                    return new ContradictionCheck(true, "DIRECT_FACTUAL_REVERSAL",
+                            "Claim asserts zero / none, whereas verified coverage confirms " + aNum + ".");
+                }
+
+                double deltaRatio = (double) Math.abs(qNum - aNum) / Math.max(qNum, aNum);
+                if (deltaRatio <= 0.05 && Math.abs(qNum - aNum) <= 2) {
+                    return new ContradictionCheck(true, "MINOR_DISCREPANCY",
+                            "Minor variance in reported figures (claim states " + qNum + ", news reports " + aNum + ").");
+                } else if (deltaRatio <= 0.25) {
+                    return new ContradictionCheck(true, "MODERATE_CONTRADICTION",
+                            "Moderate discrepancy in reported metrics (claim states " + qNum + ", news reports " + aNum + ").");
+                } else {
+                    return new ContradictionCheck(true, "MAJOR_CONTRADICTION",
+                            "Significant contradiction in reported figures (claim states " + qNum + ", news reports " + aNum + ").");
                 }
             }
         }
@@ -335,10 +361,11 @@ public class ExternalFactCheckService {
         // 3. Polarity Mismatch (survived vs died / killed)
         if ((q.contains("survived") || q.contains("safe and sound") || q.contains("unhurt") || q.contains("alive")) &&
             (a.contains("died") || a.contains("killed") || a.contains("dead") || a.contains("fatal"))) {
-            return new ContradictionCheck(true, "Polarity contradiction: claim asserts survival/unharmed status while reporting confirms casualties/death.");
+            return new ContradictionCheck(true, "DIRECT_FACTUAL_REVERSAL",
+                    "Polarity contradiction: claim asserts survival/unharmed status while reporting confirms casualties/death.");
         }
 
-        return new ContradictionCheck(false, null);
+        return new ContradictionCheck(false, "NONE", null);
     }
 
     private Integer extractFirstNumber(String text, Map<String, Integer> wordToNum) {
@@ -450,25 +477,33 @@ public class ExternalFactCheckService {
 
                     ContradictionCheck contradiction = detectContradiction(originalQuery, title + " " + snippet);
                     boolean isContradicted = contradiction.isContradicted();
+                    String severity = contradiction.getSeverity();
                     boolean corroborates = !isContradicted && doesWikipediaCorroborateClaim(originalQuery, title, snippet);
 
                     if (!corroborates && !isContradicted) {
                         return Optional.empty();
                     }
 
+                    String claimIntegrity = !isContradicted ? (corroborates ? "AUTHENTIC_REPRODUCTION" : "UNVERIFIED_ORIGIN") :
+                            ("MINOR_DISCREPANCY".equals(severity) ? "MINOR_VARIANCE" : "ALTERED_DISTORTION");
+
                     ClaimOriginDiscovery originDiscovery = ClaimOriginDiscovery.builder()
                             .originalPublisher("Wikipedia Knowledge Archive")
+                            .earliestIdentifiedPublisher("Wikipedia Knowledge Archive")
                             .originalDomain("wikipedia.org")
                             .originalHeadline(title)
                             .originalUrl(pageUrl)
                             .publishedDate("Encyclopedic Public Record")
-                            .provenanceType(isContradicted ? "ALTERED_DISTORTION" : (corroborates ? "AUTHENTIC_REPRODUCTION" : "UNVERIFIED_ORIGIN"))
-                            .provenanceStatus("SECONDARY_REPORT_FOUND")
+                            .retrievalTimestamp(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
+                            .provenanceType(claimIntegrity)
+                            .provenanceStatus("EARLIEST_RELIABLE_SOURCE_FOUND")
+                            .claimIntegrity(claimIntegrity)
+                            .contradictionSeverity(severity)
                             .evidenceTier("LEVEL_4_REFERENCE")
                             .distortionAnalysis(isContradicted ?
-                                    "Claim derived from verified historical records for '" + title + "', but key facts were distorted: " + contradiction.getReason() :
+                                    "Claim derived from verified historical records for '" + title + "', with discrepancy (" + severity + "): " + contradiction.getReason() :
                                     (corroborates ?
-                                            "Claim factually aligns with official documented public and historical records on Wikipedia." :
+                                            "Claim factually aligns with official documented public records on Wikipedia." :
                                             "Assertion could not be substantiated against documented public records."))
                             .crossReferencedConsensus(isContradicted ?
                                     "Contradicted by documented encyclopedic and historical records." :
@@ -483,7 +518,7 @@ public class ExternalFactCheckService {
                             .affiliatedOutlets(List.of("Wikipedia Knowledge Archive"))
                             .sourceCount(1)
                             .independenceRating(80.0)
-                            .consensusStance(isContradicted ? "CONTRADICTED" : "SUPPORTED")
+                            .consensusStance(isContradicted ? "REFUTED" : "CONFIRMED")
                             .evidenceTier("LEVEL_4_REFERENCE")
                             .build());
 
@@ -498,6 +533,7 @@ public class ExternalFactCheckService {
                             .isAuthenticCorroboration(corroborates)
                             .isContradiction(isContradicted)
                             .contradictionDetail(isContradicted ? contradiction.getReason() : null)
+                            .contradictionSeverity(severity)
                             .credibilityScore(94)
                             .matchPercentage(isContradicted || corroborates ? 90.0 : 40.0)
                             .originDiscovery(originDiscovery)
@@ -519,7 +555,7 @@ public class ExternalFactCheckService {
                 }
             }
         } catch (Exception e) {
-            log.debug("Wikipedia knowledge lookup skipped: {}", e.getMessage());
+            log.debug("Wikipedia candidate lookup skipped: {}", e.getMessage());
         }
         return Optional.empty();
     }
