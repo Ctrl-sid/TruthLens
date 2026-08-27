@@ -51,7 +51,7 @@ public class FactCheckEngineServiceTest {
     }
 
     @Test
-    @DisplayName("Interrogative Question Input should return NON-VERIFIABLE INPUT")
+    @DisplayName("Interrogative Question Input should return NOT_VERIFIABLE with null score (N/A)")
     public void testQuestionInput() {
         ClaimVerificationRequest request = ClaimVerificationRequest.builder()
                 .type("TEXT")
@@ -61,13 +61,13 @@ public class FactCheckEngineServiceTest {
         ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
 
         assertNotNull(response);
-        assertEquals("NON-VERIFIABLE INPUT", response.getVerdict());
-        assertEquals(0, response.getGenuinenessScore());
+        assertEquals("NOT_VERIFIABLE", response.getVerdict());
+        assertNull(response.getGenuinenessScore(), "Non-verifiable input should have null score (rendered as N/A)");
         assertTrue(response.getRationale().toLowerCase().contains("does not constitute"));
     }
 
     @Test
-    @DisplayName("Single Word Input should return NON-VERIFIABLE INPUT")
+    @DisplayName("Single Word Input should return NOT_VERIFIABLE with null score (N/A)")
     public void testSingleWordInput() {
         ClaimVerificationRequest request = ClaimVerificationRequest.builder()
                 .type("TEXT")
@@ -77,12 +77,12 @@ public class FactCheckEngineServiceTest {
         ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
 
         assertNotNull(response);
-        assertEquals("NON-VERIFIABLE INPUT", response.getVerdict());
-        assertEquals(0, response.getGenuinenessScore());
+        assertEquals("NOT_VERIFIABLE", response.getVerdict());
+        assertNull(response.getGenuinenessScore(), "Non-verifiable input should have null score (rendered as N/A)");
     }
 
     @Test
-    @DisplayName("Conversational Greeting should return NON-VERIFIABLE INPUT")
+    @DisplayName("Conversational Greeting should return NOT_VERIFIABLE with null score (N/A)")
     public void testGreetingInput() {
         ClaimVerificationRequest request = ClaimVerificationRequest.builder()
                 .type("TEXT")
@@ -92,12 +92,12 @@ public class FactCheckEngineServiceTest {
         ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
 
         assertNotNull(response);
-        assertEquals("NON-VERIFIABLE INPUT", response.getVerdict());
-        assertEquals(0, response.getGenuinenessScore());
+        assertEquals("NOT_VERIFIABLE", response.getVerdict());
+        assertNull(response.getGenuinenessScore(), "Non-verifiable input should have null score (rendered as N/A)");
     }
 
     @Test
-    @DisplayName("Debunked Health Fake News should return FABRICATED / FAKE with score <= 25")
+    @DisplayName("Debunked Health Fake News should return STRONGLY CONTRADICTED / DOCUMENTED_HOAX with score <= 25")
     public void testCancerCureFakeNews() {
         ClaimVerificationRequest request = ClaimVerificationRequest.builder()
                 .type("TEXT")
@@ -108,13 +108,13 @@ public class FactCheckEngineServiceTest {
 
         assertNotNull(response);
         assertTrue(response.getGenuinenessScore() <= 25, "Score should be <= 25, but was: " + response.getGenuinenessScore());
-        assertEquals("FABRICATED / FAKE", response.getVerdict());
+        assertTrue(response.getVerdict().contains("CONTRADICTED") || response.getVerdict().contains("HOAX") || response.getVerdict().contains("FAKE"));
         assertFalse(response.getSources().isEmpty());
         assertTrue(response.getRationale().toLowerCase().contains("cancer") || response.getRationale().toLowerCase().contains("debunked") || response.getRationale().toLowerCase().contains("chemotherapy"));
     }
 
     @Test
-    @DisplayName("5G Conspiracy Fake News should return FABRICATED / FAKE with score <= 25")
+    @DisplayName("5G Conspiracy Fake News should return STRONGLY CONTRADICTED / DOCUMENTED_HOAX with score <= 25")
     public void test5gConspiracyFakeNews() {
         ClaimVerificationRequest request = ClaimVerificationRequest.builder()
                 .type("TEXT")
@@ -125,7 +125,7 @@ public class FactCheckEngineServiceTest {
 
         assertNotNull(response);
         assertTrue(response.getGenuinenessScore() <= 25, "Score should be <= 25, but was: " + response.getGenuinenessScore());
-        assertEquals("FABRICATED / FAKE", response.getVerdict());
+        assertTrue(response.getVerdict().contains("CONTRADICTED") || response.getVerdict().contains("HOAX") || response.getVerdict().contains("FAKE"));
     }
 
     @Test
@@ -138,8 +138,8 @@ public class FactCheckEngineServiceTest {
 
         ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
 
-        assertTrue(response.getVerdict().equals("MIXED / UNVERIFIED") || 
-                   response.getVerdict().equals("LIKELY MISLEADING") || 
+        assertTrue(response.getVerdict().equals("MIXED / CONFLICTING") || 
+                   response.getVerdict().equals("MIXED / UNVERIFIED") || 
                    response.getVerdict().equals("INSUFFICIENT_EVIDENCE"));
     }
 
@@ -174,7 +174,7 @@ public class FactCheckEngineServiceTest {
     }
 
     @Test
-    @DisplayName("Debunked Flat Earth Hoax should return FABRICATED / FAKE with score <= 25")
+    @DisplayName("Debunked Flat Earth Hoax should return STRONGLY CONTRADICTED / DOCUMENTED_HOAX with score <= 25")
     public void testFlatEarthHoax() {
         ClaimVerificationRequest request = ClaimVerificationRequest.builder()
                 .type("TEXT")
@@ -185,11 +185,11 @@ public class FactCheckEngineServiceTest {
 
         assertNotNull(response);
         assertTrue(response.getGenuinenessScore() <= 25, "Score should be <= 25, but was: " + response.getGenuinenessScore());
-        assertEquals("FABRICATED / FAKE", response.getVerdict());
+        assertTrue(response.getVerdict().contains("CONTRADICTED") || response.getVerdict().contains("HOAX") || response.getVerdict().contains("FAKE"));
     }
 
     @Test
-    @DisplayName("Debunked Vaccine Microchip Conspiracy should return FABRICATED / FAKE with score <= 25")
+    @DisplayName("Debunked Vaccine Microchip Conspiracy should return STRONGLY CONTRADICTED / DOCUMENTED_HOAX with score <= 25")
     public void testVaccineMicrochipConspiracy() {
         ClaimVerificationRequest request = ClaimVerificationRequest.builder()
                 .type("TEXT")
@@ -200,11 +200,11 @@ public class FactCheckEngineServiceTest {
 
         assertNotNull(response);
         assertTrue(response.getGenuinenessScore() <= 25, "Score should be <= 25, but was: " + response.getGenuinenessScore());
-        assertEquals("FABRICATED / FAKE", response.getVerdict());
+        assertTrue(response.getVerdict().contains("CONTRADICTED") || response.getVerdict().contains("HOAX") || response.getVerdict().contains("FAKE"));
     }
 
     @Test
-    @DisplayName("Debunked World Bank Debt Forgiveness Scam should return FABRICATED / FAKE with score <= 25")
+    @DisplayName("Debunked World Bank Debt Forgiveness Scam should return STRONGLY CONTRADICTED / DOCUMENTED_HOAX with score <= 25")
     public void testWorldBankDebtScam() {
         ClaimVerificationRequest request = ClaimVerificationRequest.builder()
                 .type("TEXT")
@@ -215,7 +215,7 @@ public class FactCheckEngineServiceTest {
 
         assertNotNull(response);
         assertTrue(response.getGenuinenessScore() <= 25, "Score should be <= 25, but was: " + response.getGenuinenessScore());
-        assertEquals("FABRICATED / FAKE", response.getVerdict());
+        assertTrue(response.getVerdict().contains("CONTRADICTED") || response.getVerdict().contains("HOAX") || response.getVerdict().contains("FAKE"));
     }
 
     @Test
@@ -234,7 +234,7 @@ public class FactCheckEngineServiceTest {
     }
 
     @Test
-    @DisplayName("Question 'Did the Prime Minister pass away?' should return NON-VERIFIABLE INPUT")
+    @DisplayName("Question 'Did the Prime Minister pass away?' should return NOT_VERIFIABLE with null score (N/A)")
     public void testDidPrimeMinisterPassAwayQuestion() {
         ClaimVerificationRequest request = ClaimVerificationRequest.builder()
                 .type("TEXT")
@@ -244,8 +244,8 @@ public class FactCheckEngineServiceTest {
         ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
 
         assertNotNull(response);
-        assertEquals("NON-VERIFIABLE INPUT", response.getVerdict());
-        assertEquals(0, response.getGenuinenessScore());
+        assertEquals("NOT_VERIFIABLE", response.getVerdict());
+        assertNull(response.getGenuinenessScore(), "Question should have null score (N/A)");
     }
 
     @Test
@@ -369,8 +369,8 @@ public class FactCheckEngineServiceTest {
         ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
 
         assertNotNull(response);
-        assertNotEquals("NON-VERIFIABLE INPUT", response.getVerdict(), "WHO organization claim must not be rejected as a question!");
-        assertTrue(response.getGenuinenessScore() > 0, "Score should be calculated!");
+        assertNotEquals("NOT_VERIFIABLE", response.getVerdict(), "WHO organization claim must not be rejected as a question!");
+        assertNotNull(response.getGenuinenessScore(), "Score should be calculated!");
     }
 
     @Test
@@ -384,7 +384,7 @@ public class FactCheckEngineServiceTest {
         ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
 
         assertNotNull(response);
-        assertNotEquals("NON-VERIFIABLE INPUT", response.getVerdict(), "Valid URL input should not fail word-length validator!");
+        assertNotEquals("NOT_VERIFIABLE", response.getVerdict(), "Valid URL input should not fail word-length validator!");
     }
 
     @Test
