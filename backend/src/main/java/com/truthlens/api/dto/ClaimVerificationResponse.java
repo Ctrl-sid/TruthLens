@@ -21,10 +21,13 @@ public class ClaimVerificationResponse {
     private String verdictBadgeColor; // #10B981, #F59E0B, #94A3B8, #EF4444, #64748B
     private String confidence; // HIGH, MEDIUM, LOW
     private Integer confidenceScore; // 0 to 100%
+    private Integer evidenceCompleteness; // 0 to 100% (e.g. 3/4 verified sub-claims = 75%)
     private String contradictionSeverity; // NONE, MINOR_DISCREPANCY, MODERATE_CONTRADICTION, MAJOR_CONTRADICTION, DIRECT_FACTUAL_REVERSAL
     private String failureState; // NONE, OCR_FAILED, URL_UNREACHABLE, NO_RELEVANT_EVIDENCE, INSUFFICIENT_EVIDENCE, SOURCE_CONFLICT, VERIFICATION_TIMEOUT
     private String rationale;
     private List<String> keyReasons;
+    private ClaimContextInfo claimContext;
+    private RetrievalAudit retrievalAudit;
     @Builder.Default
     private List<DecomposedClaim> subClaims = new ArrayList<>();
     @Builder.Default
@@ -38,9 +41,41 @@ public class ClaimVerificationResponse {
     private ImageIntegrityAnalysis imageAnalysis; // Null if not image input
     private String timestamp;
     @Builder.Default
-    private String algorithmVersion = "2.1";
+    private String algorithmVersion = "2.2";
     @Builder.Default
-    private String scoringVersion = "2.1";
+    private String scoringVersion = "2.2";
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class ClaimContextInfo {
+        @Builder.Default
+        private List<String> geographicEntities = new ArrayList<>(); // e.g. ["Nepal", "India"]
+        private String domain; // e.g. "Disaster Relief & Flood Management", "Space Exploration", "Public Health"
+        private String claimType; // e.g. "GOVERNMENT_ACTION", "DISASTER_CASUALTY", "SCIENTIFIC_DISCOVERY"
+        @Builder.Default
+        private List<String> targetAuthorityInstitutions = new ArrayList<>(); // e.g. ["Nepal Police", "National Disaster Management", "Ministry of External Affairs"]
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class RetrievalAudit {
+        private int searchQueriesRun;
+        private int sourcesRetrieved;
+        private int relevantSources;
+        private int rejectedSources;
+        private int syndicatedDuplicates;
+        private int independentClustersCount;
+        private int primarySourcesCount;
+        private int accreditedSecondaryCount;
+        private int referenceSourcesCount;
+        private int supportingSourcesCount;
+        private int contradictingSourcesCount;
+        private String auditSummary;
+    }
 
     @Data
     @NoArgsConstructor
@@ -48,13 +83,18 @@ public class ClaimVerificationResponse {
     @Builder
     public static class DecomposedClaim {
         private String claimText;
-        private String claimType; // EVENT_OCCURRENCE, CASUALTY_COUNT, TEMPORAL_DATE, LOCATION_FACT, ATTRIBUTION, QUANTITY, STATISTICAL_CLAIM
+        private String claimType; // EVENT_OCCURRENCE, CASUALTY_COUNT, MISSING_COUNT, GOVERNMENT_ACTION, TEMPORAL_DATE, LOCATION_FACT, ATTRIBUTION, STATISTICAL_CLAIM
         private String claimCentrality; // PRIMARY_CLAIM, SUPPORTING_CLAIM, MINOR_CLAIM
         private double claimImportanceWeight; // e.g. 0.60 for Primary, 0.30 for Supporting, 0.10 for Minor
         private Integer claimScore; // 0 to 100
-        private String claimVerdict; // VERIFIED, MOSTLY_VERIFIED, REFUTED, UNVERIFIED, INSUFFICIENT_EVIDENCE
-        private String stance; // SUPPORTED, CONFIRMED, ARTICLE_REPORTS_CLAIM, REFUTED, DENIED, PARTIALLY_SUPPORTED, NOT_MENTIONED, UNCERTAIN
+        private String claimVerdict; // VERIFIED, MOSTLY_VERIFIED, DEVELOPING_RANGE, REFUTED, UNVERIFIED, INSUFFICIENT_EVIDENCE
+        private String stance; // SUPPORTED, CONFIRMED, ARTICLE_REPORTS_CLAIM, DEVELOPING, REFUTED, DENIED, PARTIALLY_SUPPORTED, NOT_MENTIONED, UNCERTAIN
         private String evidenceSummary;
+        private String targetMetric; // e.g. "CASUALTY_COUNT = 95", "MISSING_COUNT >= 350"
+        private String developingRange; // e.g. "95 - 102 reported casualties"
+        private String statusReason;
+        @Builder.Default
+        private List<String> evidenceClusterIds = new ArrayList<>();
         private boolean isNegated;
     }
 
@@ -71,6 +111,7 @@ public class ClaimVerificationResponse {
         private double independenceRating; // e.g. 100% for primary agency, 40% for syndicated republishers
         private String consensusStance; // SUPPORTED, CONFIRMED, ARTICLE_REPORTS_CLAIM, REFUTED, CONTRADICTED, UNCERTAIN
         private String evidenceTier; // LEVEL_1_PRIMARY, LEVEL_2_SECONDARY, LEVEL_3_FACTCHECK, LEVEL_4_REFERENCE, LEVEL_5_USER_GENERATED
+        private boolean isPrimaryAuthority; // True if official emergency/police/gov authority
     }
 
     @Data
@@ -80,6 +121,7 @@ public class ClaimVerificationResponse {
     public static class ExplainabilityProfile {
         private String confidenceLevel; // HIGH, MEDIUM, LOW
         private Integer confidenceScore; // 0 to 100%
+        private Integer evidenceCompleteness; // 0 to 100%
         @Builder.Default
         private List<String> positiveChecklist = new ArrayList<>(); // e.g. "✓ Corroborated across 2 independent wire clusters"
         @Builder.Default
@@ -88,6 +130,7 @@ public class ClaimVerificationResponse {
         private List<String> detectedDifferences = new ArrayList<>();
         @Builder.Default
         private List<EvidenceItemSummary> evidenceMatrix = new ArrayList<>();
+        private RetrievalAudit retrievalAudit;
     }
 
     @Data
@@ -101,7 +144,14 @@ public class ClaimVerificationResponse {
         private String stance; // SUPPORTED, CONFIRMED, ARTICLE_REPORTS_CLAIM, REFUTED, DENIED, NOT_MENTIONED, UNCERTAIN
         private String reliability; // HIGH, MEDIUM, LOW
         private double independence; // 0% to 100%
+        private double contextualAuthorityScore; // 0.0 to 1.0
+        private String geographicRelevance; // VERY_HIGH, HIGH, MEDIUM, LOW
+        private String directness; // DIRECT_PRIMARY, SECONDARY_REPORTING, INDIRECT_REFERENCE
         private String evidenceRole; // "Direct Verification Evidence" vs "Discovery Candidate"
+        @Builder.Default
+        private List<String> acceptanceReasons = new ArrayList<>();
+        @Builder.Default
+        private List<String> rejectionFlags = new ArrayList<>();
     }
 
     @Data
@@ -122,7 +172,7 @@ public class ClaimVerificationResponse {
     @Builder
     public static class ClaimOriginDiscovery {
         private String originalPublisher; // Fallback / Display name
-        private String earliestIdentifiedPublisher; // e.g. "The Hindu", "Reuters", "FDA", "Snopes"
+        private String earliestIdentifiedPublisher; // e.g. "Nepal Police", "The Hindu", "Reuters", "Snopes"
         private String originalDomain; // e.g. "thehindu.com"
         private String originalHeadline; // Exact original article title
         private String originalUrl; // Direct link
@@ -149,11 +199,17 @@ public class ClaimVerificationResponse {
         private int credibilityRating;
         private double matchPercentage;
         private double independenceRating; // 0 to 100%
+        private double contextualAuthorityScore; // 0.0 to 1.0
+        private String geographicRelevance; // VERY_HIGH, HIGH, MEDIUM, LOW
+        private String directness; // DIRECT_PRIMARY, SECONDARY_REPORTING, INDIRECT_REFERENCE
         private String stance; // SUPPORTED, CONFIRMED, ARTICLE_REPORTS_CLAIM, REFUTED, DENIED, PARTIALLY_SUPPORTED, NOT_MENTIONED, UNCERTAIN
         private String verdictBySource; // True, False, Unverified, Reported Allegation
         private String articleTitle;
         private String url;
         private String clusterId;
+        private boolean isPrimarySource;
+        @Builder.Default
+        private List<String> acceptanceReasons = new ArrayList<>();
     }
 
     @Data
