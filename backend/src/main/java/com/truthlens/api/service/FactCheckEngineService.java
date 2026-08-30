@@ -7,6 +7,7 @@ import com.truthlens.api.dto.NlpAnalysisResponse;
 import com.truthlens.api.model.FactCheckHistory;
 import com.truthlens.api.model.User;
 import com.truthlens.api.model.VerifiedSource;
+import com.truthlens.api.nlp.ClaimContextService;
 import com.truthlens.api.nlp.ClaimDecompositionService;
 import com.truthlens.api.nlp.ClaimRelationAnalyzer;
 import com.truthlens.api.nlp.ClaimVerifiabilityValidator;
@@ -29,7 +30,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -44,6 +44,7 @@ public class FactCheckEngineService {
     private final ClaimVerifiabilityValidator claimVerifiabilityValidator;
     private final ClaimDecompositionService claimDecompositionService;
     private final ClaimRelationAnalyzer claimRelationAnalyzer;
+    private final ClaimContextService claimContextService;
     private final FactCheckHistoryRepository historyRepository;
     private final UserRepository userRepository;
 
@@ -57,6 +58,7 @@ public class FactCheckEngineService {
             ClaimVerifiabilityValidator claimVerifiabilityValidator,
             ClaimDecompositionService claimDecompositionService,
             ClaimRelationAnalyzer claimRelationAnalyzer,
+            ClaimContextService claimContextService,
             @Autowired(required = false) FactCheckHistoryRepository historyRepository,
             @Autowired(required = false) UserRepository userRepository
     ) {
@@ -68,6 +70,7 @@ public class FactCheckEngineService {
         this.claimVerifiabilityValidator = claimVerifiabilityValidator;
         this.claimDecompositionService = claimDecompositionService != null ? claimDecompositionService : new ClaimDecompositionService();
         this.claimRelationAnalyzer = claimRelationAnalyzer != null ? claimRelationAnalyzer : new ClaimRelationAnalyzer();
+        this.claimContextService = claimContextService != null ? claimContextService : new ClaimContextService();
         this.historyRepository = historyRepository;
         this.userRepository = userRepository;
     }
@@ -80,7 +83,7 @@ public class FactCheckEngineService {
             VerifiedSourceRepository verifiedSourceRepository,
             ClaimVerifiabilityValidator claimVerifiabilityValidator
     ) {
-        this(nlpPipelineService, ocrAnalysisService, factCheckingCorpus, externalFactCheckService, verifiedSourceRepository, claimVerifiabilityValidator, new ClaimDecompositionService(), new ClaimRelationAnalyzer(), null, null);
+        this(nlpPipelineService, ocrAnalysisService, factCheckingCorpus, externalFactCheckService, verifiedSourceRepository, claimVerifiabilityValidator, new ClaimDecompositionService(), new ClaimRelationAnalyzer(), new ClaimContextService(), null, null);
     }
 
     public ClaimVerificationResponse verifyClaim(ClaimVerificationRequest request) {
@@ -106,11 +109,12 @@ public class FactCheckEngineService {
                     .id(claimId)
                     .inputType(request.getType() != null ? request.getType().toUpperCase() : "TEXT")
                     .claimSummary("Non-Verifiable Input: '" + (contentToAnalyze.length() > 50 ? contentToAnalyze.substring(0, 47) + "..." : contentToAnalyze) + "'")
-                    .genuinenessScore(null) // N/A (Not a fake news score)
+                    .genuinenessScore(null) // N/A
                     .verdict("NOT_VERIFIABLE")
                     .verdictBadgeColor("#64748B")
                     .confidence("HIGH")
                     .confidenceScore(95)
+                    .evidenceCompleteness(0)
                     .contradictionSeverity("NONE")
                     .failureState("NONE")
                     .rationale("The submitted text does not constitute a declarative news claim with verifiable factual assertions. " + validation.getRejectionReason() + ".")
@@ -124,28 +128,34 @@ public class FactCheckEngineService {
                     .build();
         }
 
-        // 3. Decompose Claim into Atomic Propositions & Assign Centrality Weights
+        // 3. Extract Claim Context (Geographic entities, Domain, Target Authorities)
+        ClaimContextInfo claimContext = claimContextService.extractClaimContext(contentToAnalyze);
+
+        // 4. Decompose Claim into Atomic Propositions & Assign Centrality Weights
         List<DecomposedClaim> decomposedSubClaims = claimDecompositionService.decompose(contentToAnalyze);
 
-        // 4. Run NLP Pipeline
+        // 5. Run NLP Pipeline
         NlpAnalysisResponse nlpResults = nlpPipelineService.processText(contentToAnalyze);
 
-        // 5. Match against Fact-Checking Corpus Candidate Database
+        // 6. Match against Fact-Checking Corpus Candidate Database
         MatchResult corpusMatch = factCheckingCorpus.matchClaimAgainstCorpus(contentToAnalyze);
 
-        // 6. Query External Candidate Sources & Live Wire Discovery
-        Optional<ExternalFactCheckService.ExternalFactResult> externalFact = externalFactCheckService.queryExternalKnowledge(contentToAnalyze);
+        // 7. Query Contextual External Candidate Sources & Live Wire Discovery
+        Optional<ExternalFactCheckService.ExternalFactResult> externalFact = externalFactCheckService.queryExternalKnowledge(contentToAnalyze, claimContext);
 
-        // 7. Check Domain Credibility if input is URL
+        // 8. Check Domain Credibility if input is URL
         VerifiedSource domainSource = null;
         if (detectedDomain != null) {
             domainSource = verifiedSourceRepository.findByDomain(detectedDomain.toLowerCase()).orElse(null);
         }
 
-        // 8. Evaluate Sub-Claims Individually & Check for Direct Reversals
+        // 9. Evaluate Sub-Claims Individually & Check for Direct Reversals / Range Matching
         evaluateSubClaims(decomposedSubClaims, corpusMatch, externalFact);
 
-        // 9. Core Genuineness Calculation & Contradiction Severity Assessment
+        // 10. Calculate Evidence Completeness (% of subclaims corroborated)
+        int evidenceCompleteness = calculateEvidenceCompleteness(decomposedSubClaims);
+
+        // 11. Core Genuineness Calculation & Contradiction Severity Assessment
         int score = calculateGenuinenessScore(contentToAnalyze, nlpResults, imageAnalysis, corpusMatch, externalFact, domainSource, decomposedSubClaims);
         String contradictionSeverity = determineContradictionSeverity(contentToAnalyze, externalFact, corpusMatch, decomposedSubClaims);
         String verdict = determineVerdict(score, externalFact, corpusMatch, contradictionSeverity);
@@ -153,23 +163,27 @@ public class FactCheckEngineService {
         int confidenceScore = calculateConfidenceScore(corpusMatch, externalFact, decomposedSubClaims);
         String confidenceLevel = confidenceScore >= 75 ? "HIGH" : (confidenceScore >= 45 ? "MEDIUM" : "LOW");
 
-        // 10. Generate Rationale & Key Reasons
-        List<String> keyReasons = generateKeyReasons(contentToAnalyze, nlpResults, score, imageAnalysis, corpusMatch, externalFact, domainSource, contradictionSeverity);
-        String rationale = buildRationaleText(contentToAnalyze, score, verdict, nlpResults, corpusMatch, externalFact, domainSource, contradictionSeverity);
+        // 12. Generate Rationale & Key Reasons
+        List<String> keyReasons = generateKeyReasons(contentToAnalyze, nlpResults, score, imageAnalysis, corpusMatch, externalFact, domainSource, contradictionSeverity, evidenceCompleteness);
+        String rationale = buildRationaleText(contentToAnalyze, score, verdict, nlpResults, corpusMatch, externalFact, domainSource, contradictionSeverity, evidenceCompleteness);
 
-        // 11. Build Authentic Source Citations & Clusters
+        // 13. Build Authentic Source Citations & Clusters
         List<SourceEvidence> sources = buildSourceCitations(contentToAnalyze, score, corpusMatch, externalFact, domainSource);
         List<EvidenceCluster> evidenceClusters = externalFact.map(ExternalFactCheckService.ExternalFactResult::getEvidenceClusters)
                 .filter(c -> !c.isEmpty())
                 .orElseGet(() -> buildDefaultClusters(sources, score < 40));
 
-        // 12. Build Claim Origin & Provenance Discovery (Separated from Claim Integrity)
+        // 14. Build Retrieval Audit Trail
+        RetrievalAudit retrievalAudit = externalFact.map(ExternalFactCheckService.ExternalFactResult::getRetrievalAudit)
+                .orElseGet(() -> buildDefaultAudit(sources, evidenceClusters));
+
+        // 15. Build Claim Origin & Provenance Discovery (Separated from Claim Integrity)
         ClaimOriginDiscovery originDiscovery = buildClaimOriginDiscovery(contentToAnalyze, score, verdict, corpusMatch, externalFact, domainSource, contradictionSeverity);
 
-        // 13. Build Structured Explainability Profile & Matrix
-        ExplainabilityProfile explainability = buildExplainabilityProfile(contentToAnalyze, score, verdict, confidenceLevel, confidenceScore, sources, evidenceClusters, externalFact, corpusMatch, contradictionSeverity);
+        // 16. Build Structured Explainability Profile & Matrix
+        ExplainabilityProfile explainability = buildExplainabilityProfile(contentToAnalyze, score, verdict, confidenceLevel, confidenceScore, evidenceCompleteness, sources, evidenceClusters, externalFact, corpusMatch, contradictionSeverity, retrievalAudit);
 
-        // 14. Decouple Content Diagnostics / Sensationalism
+        // 17. Decouple Content Diagnostics / Sensationalism
         ContentCharacteristics contentDiagnostics = buildContentDiagnostics(nlpResults);
 
         String summary = nlpResults.getExtractedEntities().isEmpty() ?
@@ -178,7 +192,7 @@ public class FactCheckEngineService {
 
         long resultId = System.currentTimeMillis();
 
-        // 15. Persist verified claim to database if repository is available
+        // 18. Persist verified claim to database if repository is available
         if (historyRepository != null) {
             try {
                 User authUser = null;
@@ -214,10 +228,13 @@ public class FactCheckEngineService {
                 .verdictBadgeColor(verdictBadgeColor)
                 .confidence(confidenceLevel)
                 .confidenceScore(confidenceScore)
+                .evidenceCompleteness(evidenceCompleteness)
                 .contradictionSeverity(contradictionSeverity)
                 .failureState("NONE")
                 .rationale(rationale)
                 .keyReasons(keyReasons)
+                .claimContext(claimContext)
+                .retrievalAudit(retrievalAudit)
                 .subClaims(decomposedSubClaims)
                 .evidenceClusters(evidenceClusters)
                 .sources(sources)
@@ -227,9 +244,17 @@ public class FactCheckEngineService {
                 .nlpAnalysis(nlpResults)
                 .imageAnalysis(imageAnalysis)
                 .timestamp(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
-                .algorithmVersion("2.1")
-                .scoringVersion("2.1")
+                .algorithmVersion("2.2")
+                .scoringVersion("2.2")
                 .build();
+    }
+
+    private int calculateEvidenceCompleteness(List<DecomposedClaim> subClaims) {
+        if (subClaims == null || subClaims.isEmpty()) return 100;
+        long verifiedCount = subClaims.stream()
+                .filter(s -> "VERIFIED".equals(s.getClaimVerdict()) || "MOSTLY_VERIFIED".equals(s.getClaimVerdict()) || "DEVELOPING_RANGE".equals(s.getClaimVerdict()))
+                .count();
+        return (int) Math.round(((double) verifiedCount / subClaims.size()) * 100.0);
     }
 
     private void evaluateSubClaims(List<DecomposedClaim> subClaims, MatchResult corpusMatch, Optional<ExternalFactCheckService.ExternalFactResult> externalFact) {
@@ -258,21 +283,27 @@ public class FactCheckEngineService {
                 sub.setClaimVerdict("MINOR_DISCREPANCY".equals(severity) ? "MOSTLY_VERIFIED" : "REFUTED");
                 sub.setStance(claimRelationAnalyzer.analyzeRelation(text, refTopic, true).name());
                 sub.setEvidenceSummary("Contradicted by verified records (" + severity + "): " + reason);
+                sub.setStatusReason(reason);
             } else if (externalFact.isPresent() && externalFact.get().isAuthenticCorroboration()) {
                 sub.setClaimScore(92);
                 sub.setClaimVerdict("VERIFIED");
                 sub.setStance("CONFIRMED");
                 sub.setEvidenceSummary("Corroborated across primary news wire reports.");
+                sub.setStatusReason("Independently corroborated across authoritative dispatches.");
+                sub.setEvidenceClusterIds(List.of("C001", "C002"));
             } else if (corpusMatch.getBestVerifiedEntry() != null && corpusMatch.getVerifiedSimilarity() >= 0.35) {
                 sub.setClaimScore(88);
                 sub.setClaimVerdict("VERIFIED");
                 sub.setStance("CONFIRMED");
                 sub.setEvidenceSummary("Corroborated by historical documentary archives (" + corpusMatch.getBestVerifiedEntry().getSourceName() + ").");
+                sub.setStatusReason("Corroborated by historical archives.");
+                sub.setEvidenceClusterIds(List.of("C001"));
             } else {
                 sub.setClaimScore(50);
                 sub.setClaimVerdict("UNVERIFIED");
                 sub.setStance("UNCERTAIN");
                 sub.setEvidenceSummary("Insufficient independent documentation found.");
+                sub.setStatusReason("Requires primary official corroboration.");
             }
         }
     }
@@ -389,7 +420,7 @@ public class FactCheckEngineService {
         // 5. External Verified Knowledge / Live News Wire Corroboration
         if (externalFact.isPresent() && externalFact.get().isAuthenticCorroboration()) {
             int cred = externalFact.get().getCredibilityScore() > 0 ? externalFact.get().getCredibilityScore() : 94;
-            return Math.max(85, Math.min(98, cred));
+            return Math.max(82, Math.min(98, cred));
         }
 
         // 6. Centrality-Weighted aggregation if multiple sub-claims exist
@@ -437,17 +468,18 @@ public class FactCheckEngineService {
             return "DOCUMENTED_HOAX";
         }
 
-        // Clean Score Intervals (Page 18 of Architecture Review)
+        // Clean Score Intervals (Section 25 of Proposed Architecture)
         if (score >= 85) return "VERIFIED GENUINE";
         if (score >= 70) return "MOSTLY GENUINE";
-        if (score >= 40) return "MIXED / CONFLICTING";
+        if (score >= 40) return "MIXED / PARTIALLY VERIFIED";
+        if (score >= 20) return "LIKELY FABRICATED";
         return "STRONGLY CONTRADICTED";
     }
 
     private String getVerdictBadgeColor(String verdict, int score) {
         if ("VERIFIED GENUINE".equals(verdict) || "MOSTLY GENUINE".equals(verdict)) return "#10B981"; // Emerald Green
         if ("INSUFFICIENT_EVIDENCE".equals(verdict)) return "#94A3B8"; // Slate Gray
-        if ("MIXED / CONFLICTING".equals(verdict) || "MIXED / UNVERIFIED".equals(verdict)) return "#F59E0B"; // Amber Yellow
+        if ("MIXED / PARTIALLY VERIFIED".equals(verdict) || "MIXED / CONFLICTING".equals(verdict)) return "#F59E0B"; // Amber Yellow
         if ("NOT_VERIFIABLE".equals(verdict)) return "#64748B"; // Neutral Slate
         return "#EF4444"; // Crimson Red
     }
@@ -457,7 +489,7 @@ public class FactCheckEngineService {
         int score = 40; // baseline
         if (externalFact.isPresent()) {
             int sourceCount = externalFact.get().getCrossReferencedSources().size();
-            score += Math.min(40, sourceCount * 15);
+            score += Math.min(45, sourceCount * 15);
             if (externalFact.get().getCredibilityScore() >= 90) {
                 score += 15;
             }
@@ -472,11 +504,13 @@ public class FactCheckEngineService {
 
     private ExplainabilityProfile buildExplainabilityProfile(String text, int score, String verdict, String confidence,
                                                             int confidenceScore,
+                                                            int evidenceCompleteness,
                                                             List<SourceEvidence> sources,
                                                             List<EvidenceCluster> clusters,
                                                             Optional<ExternalFactCheckService.ExternalFactResult> externalFact,
                                                             MatchResult match,
-                                                            String contradictionSeverity) {
+                                                            String contradictionSeverity,
+                                                            RetrievalAudit retrievalAudit) {
 
         List<String> positive = new ArrayList<>();
         List<String> warning = new ArrayList<>();
@@ -487,7 +521,7 @@ public class FactCheckEngineService {
 
         if (clusters != null && !clusters.isEmpty()) {
             if (score >= 70 && !isContradicted) {
-                positive.add("Supported by " + clusters.size() + " independent evidence cluster" + (clusters.size() > 1 ? "s" : "") + ".");
+                positive.add("Corroborated across " + clusters.size() + " independent evidence cluster" + (clusters.size() > 1 ? "s" : "") + ".");
             } else if (isContradicted) {
                 warning.add("Contradicted across " + clusters.size() + " independent evidence cluster" + (clusters.size() > 1 ? "s" : "") + ".");
             }
@@ -496,7 +530,7 @@ public class FactCheckEngineService {
         if (externalFact.isPresent()) {
             ExternalFactCheckService.ExternalFactResult res = externalFact.get();
             if (res.isAuthenticCorroboration()) {
-                positive.add("Earliest identified report located from " + res.getSourceName() + ".");
+                positive.add("Earliest identified contemporaneous report located from " + res.getSourceName() + ".");
                 positive.add("Factual entities and core topic aligned with accredited reporting.");
             } else if (res.isContradiction()) {
                 warning.add("Contradiction detected (" + contradictionSeverity + "): " + res.getContradictionDetail());
@@ -519,17 +553,23 @@ public class FactCheckEngineService {
                     .stance(se.getStance() != null ? se.getStance() : (score >= 70 ? "SUPPORTED" : "REFUTED"))
                     .reliability(se.getCredibilityRating() >= 90 ? "HIGH" : "MEDIUM")
                     .independence(se.getIndependenceRating() > 0 ? se.getIndependenceRating() : 80.0)
+                    .contextualAuthorityScore(se.getContextualAuthorityScore() > 0 ? se.getContextualAuthorityScore() : 0.85)
+                    .geographicRelevance(se.getGeographicRelevance() != null ? se.getGeographicRelevance() : "HIGH")
+                    .directness(se.getDirectness() != null ? se.getDirectness() : "SECONDARY_REPORTING")
                     .evidenceRole("Direct Verification Evidence")
+                    .acceptanceReasons(se.getAcceptanceReasons())
                     .build());
         }
 
         return ExplainabilityProfile.builder()
                 .confidenceLevel(confidence)
                 .confidenceScore(confidenceScore)
+                .evidenceCompleteness(evidenceCompleteness)
                 .positiveChecklist(positive)
                 .warningChecklist(warning)
                 .detectedDifferences(diffs)
                 .evidenceMatrix(matrix)
+                .retrievalAudit(retrievalAudit)
                 .build();
     }
 
@@ -558,7 +598,7 @@ public class FactCheckEngineService {
         if (sources == null || sources.isEmpty()) return clusters;
 
         clusters.add(EvidenceCluster.builder()
-                .clusterId("CLUSTER-MAIN-01")
+                .clusterId("C001")
                 .clusterTheme("Accredited Documentary Repositories")
                 .primaryOutlet(sources.get(0).getSourceName())
                 .affiliatedOutlets(sources.stream().map(SourceEvidence::getSourceName).collect(Collectors.toList()))
@@ -566,9 +606,27 @@ public class FactCheckEngineService {
                 .independenceRating(85.0)
                 .consensusStance(isContradicted ? "REFUTED" : "CONFIRMED")
                 .evidenceTier("LEVEL_2_SECONDARY")
+                .isPrimaryAuthority(false)
                 .build());
 
         return clusters;
+    }
+
+    private RetrievalAudit buildDefaultAudit(List<SourceEvidence> sources, List<EvidenceCluster> clusters) {
+        return RetrievalAudit.builder()
+                .searchQueriesRun(1)
+                .sourcesRetrieved(sources.size())
+                .relevantSources(sources.size())
+                .rejectedSources(0)
+                .syndicatedDuplicates(0)
+                .independentClustersCount(clusters.size())
+                .primarySourcesCount((int) sources.stream().filter(SourceEvidence::isPrimarySource).count())
+                .accreditedSecondaryCount(sources.size())
+                .referenceSourcesCount(0)
+                .supportingSourcesCount(sources.size())
+                .contradictingSourcesCount(0)
+                .auditSummary("Retrieved " + sources.size() + " sources across " + clusters.size() + " clusters.")
+                .build();
     }
 
     private Optional<String> checkDemographicAnomaly(String text) {
@@ -616,7 +674,8 @@ public class FactCheckEngineService {
                                             MatchResult match,
                                             Optional<ExternalFactCheckService.ExternalFactResult> externalFact,
                                             VerifiedSource domainSource,
-                                            String contradictionSeverity) {
+                                            String contradictionSeverity,
+                                            int completeness) {
         List<String> reasons = new ArrayList<>();
 
         Optional<String> demographicAnomaly = checkDemographicAnomaly(text);
@@ -634,9 +693,9 @@ public class FactCheckEngineService {
                 }
                 return reasons;
             } else if (fact.isAuthenticCorroboration()) {
-                reasons.add("Corroborated by verified press reporting from " + fact.getSourceName() + " (" + fact.getSourceDomain() + ").");
-                reasons.add("Matched against official news headline: \"" + fact.getTopic() + "\".");
-                reasons.add("Cross-referenced across Tier-1 wire agencies with " + fact.getCredibilityScore() + "% credibility.");
+                reasons.add("Corroborated by contemporaneous press reporting from " + fact.getSourceName() + " (" + fact.getSourceDomain() + ").");
+                reasons.add("Matched against official news dispatch: \"" + fact.getTopic() + "\".");
+                reasons.add("Cross-referenced across " + fact.getEvidenceClusters().size() + " independent evidence clusters with " + completeness + "% factual completeness.");
                 return reasons;
             }
         }
@@ -679,7 +738,8 @@ public class FactCheckEngineService {
                                       MatchResult match,
                                       Optional<ExternalFactCheckService.ExternalFactResult> externalFact,
                                       VerifiedSource domainSource,
-                                      String contradictionSeverity) {
+                                      String contradictionSeverity,
+                                      int completeness) {
 
         Optional<String> demographicAnomaly = checkDemographicAnomaly(text);
         if (demographicAnomaly.isPresent()) {
@@ -692,8 +752,8 @@ public class FactCheckEngineService {
                 return "TruthLens has evaluated this submission as " + verdict + ". Contradicted by verified press reporting from " +
                         fact.getSourceName() + ": \"" + fact.getTopic() + "\" (" + contradictionSeverity + "). " + fact.getContradictionDetail();
             } else if (fact.isAuthenticCorroboration()) {
-                return "TruthLens verified this claim against accredited news wire archives and real-time press reporting. Corroborated by verified press reporting from " +
-                        fact.getSourceName() + ": \"" + fact.getTopic() + "\".";
+                return "TruthLens verified this claim against accredited news wire archives and real-time press reporting. Corroborated by contemporaneous reporting from " +
+                        fact.getSourceName() + " (" + completeness + "% sub-claim completeness).";
             }
         }
 
@@ -727,11 +787,11 @@ public class FactCheckEngineService {
     private List<SourceEvidence> buildSourceCitations(String text, int score, MatchResult match,
                                                       Optional<ExternalFactCheckService.ExternalFactResult> externalFact,
                                                       VerifiedSource domainSource) {
-        List<SourceEvidence> sources = new ArrayList<>();
-
         if (externalFact.isPresent() && !externalFact.get().getCrossReferencedSources().isEmpty()) {
             return externalFact.get().getCrossReferencedSources();
         }
+
+        List<SourceEvidence> sources = new ArrayList<>();
 
         if (match.getBestDebunkedEntry() != null && match.getDebunkedSimilarity() >= 0.45) {
             CorpusEntry entry = match.getBestDebunkedEntry();
@@ -742,11 +802,16 @@ public class FactCheckEngineService {
                     .credibilityRating(96)
                     .matchPercentage(Math.round(match.getDebunkedSimilarity() * 1000.0) / 10.0)
                     .independenceRating(90.0)
+                    .contextualAuthorityScore(0.95)
+                    .geographicRelevance("HIGH")
+                    .directness("DIRECT_PRIMARY")
                     .stance("REFUTED")
                     .verdictBySource("Debunked / False")
                     .articleTitle(entry.getArticleTitle())
                     .url(entry.getSourceUrl())
-                    .clusterId("CLUSTER-FACTCHECK-01")
+                    .clusterId("C001")
+                    .isPrimarySource(false)
+                    .acceptanceReasons(List.of("Accredited fact-checking repository record", "Matching debunked claim pattern"))
                     .build());
         }
 
@@ -762,11 +827,16 @@ public class FactCheckEngineService {
                     .credibilityRating(98)
                     .matchPercentage(Math.round(match.getVerifiedSimilarity() * 1000.0) / 10.0)
                     .independenceRating(100.0)
+                    .contextualAuthorityScore(0.92)
+                    .geographicRelevance("HIGH")
+                    .directness("SECONDARY_REPORTING")
                     .stance(isCorpusContradicted ? "REFUTED" : "SUPPORTED")
                     .verdictBySource(isCorpusContradicted ? "Contradicted / False" : "Verified True")
                     .articleTitle(entry.getArticleTitle())
                     .url(entry.getSourceUrl())
-                    .clusterId("CLUSTER-WIRE-01")
+                    .clusterId("C001")
+                    .isPrimarySource(false)
+                    .acceptanceReasons(List.of("Accredited documentary record", "Corroborates core propositions"))
                     .build());
         }
 
@@ -778,11 +848,16 @@ public class FactCheckEngineService {
                     .credibilityRating(domainSource.getCredibilityScore())
                     .matchPercentage(90.0)
                     .independenceRating(75.0)
+                    .contextualAuthorityScore(0.85)
+                    .geographicRelevance("HIGH")
+                    .directness("SECONDARY_REPORTING")
                     .stance("SUPPORTED")
                     .verdictBySource(score >= 70 ? "Verified Domain" : "Unverified")
                     .articleTitle("Accredited Press Domain (" + domainSource.getDomain() + ")")
                     .url("https://" + domainSource.getDomain())
-                    .clusterId("CLUSTER-DOMAIN-01")
+                    .clusterId("C002")
+                    .isPrimarySource(false)
+                    .acceptanceReasons(List.of("Verified accredited domain registry", "Domain credibility trust score: " + domainSource.getCredibilityScore()))
                     .build());
         }
 
