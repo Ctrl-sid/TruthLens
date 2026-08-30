@@ -12,7 +12,9 @@ import {
   HelpCircle,
   Share2,
   ArrowRight,
-  ShieldCheck
+  ShieldCheck,
+  Split,
+  Network
 } from 'lucide-react';
 
 export default function ClaimOriginCard({ originDiscovery, userClaim, evidenceClusters = [] }) {
@@ -76,7 +78,7 @@ export default function ClaimOriginCard({ originDiscovery, userClaim, evidenceCl
 
   const getTierBadge = (tier) => {
     const t = tier || 'LEVEL_2_SECONDARY';
-    if (t.includes('LEVEL_1')) return <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">Level 1 Primary Gov / Official</span>;
+    if (t.includes('LEVEL_1')) return <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">Level 1 Primary Gov / Police</span>;
     if (t.includes('LEVEL_3')) return <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">Level 3 Fact Check Database</span>;
     if (t.includes('LEVEL_4')) return <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">Level 4 Reference Archive</span>;
     if (t.includes('LEVEL_5')) return <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">Level 5 User Social / Forum</span>;
@@ -94,7 +96,7 @@ export default function ClaimOriginCard({ originDiscovery, userClaim, evidenceCl
             <span className="text-xs uppercase tracking-wider font-bold text-sky-400">Provenance Radar & Evidence Graph</span>
             <h3 className="text-lg font-bold text-white mt-0.5 flex items-center gap-2">
               <Compass className="w-5 h-5 text-sky-400" />
-              Origin Discovery & Integrity Assessment
+              Origin Discovery & Multi-Branch Provenance
             </h3>
           </div>
 
@@ -107,13 +109,19 @@ export default function ClaimOriginCard({ originDiscovery, userClaim, evidenceCl
           </div>
         </div>
 
-        {/* 2. Technical Provenance Radar Flow Graph with Relational Edges */}
+        {/* 2. Multi-Branch Provenance Graph Flow */}
         <div className="mt-4 p-4 rounded-xl bg-slate-950/60 border border-slate-700/50">
-          <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
-            <GitFork className="w-4 h-4 text-sky-400" />
-            Provenance Graph (Claim &rarr; Relational Edge &rarr; Earliest Report &rarr; Verdict)
+          <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center justify-between">
+            <span className="flex items-center gap-1.5">
+              <Network className="w-4 h-4 text-sky-400" />
+              Provenance Graph (Claim &rarr; Authority Dispatches &rarr; Verdict)
+            </span>
+            <span className="text-[11px] font-mono text-sky-400 font-semibold">
+              {evidenceClusters.length > 0 ? `${evidenceClusters.length} Evidence Clusters` : '1 Cluster'}
+            </span>
           </div>
 
+          {/* Flow Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 relative items-center">
             {/* Node 1: Submitted Claim */}
             <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-700/70 text-center">
@@ -126,7 +134,7 @@ export default function ClaimOriginCard({ originDiscovery, userClaim, evidenceCl
             {/* Node 2: Earliest Report & Stance Edge */}
             <div className="p-3.5 rounded-xl bg-sky-950/40 border border-sky-500/40 text-center relative">
               <span className="text-[10px] uppercase font-bold text-sky-300 block mb-0.5">
-                Earliest Identified Report
+                Earliest Identified Authority
               </span>
               <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 inline-block mb-1">
                 {integrityState === 'AUTHENTIC_REPRODUCTION' ? 'CORROBORATES' : (integrityState === 'ALTERED_DISTORTION' ? 'CONTRADICTS' : 'REFERENCES')}
@@ -148,7 +156,31 @@ export default function ClaimOriginCard({ originDiscovery, userClaim, evidenceCl
           </div>
         </div>
 
-        {/* 3. Earliest Identified Report Details */}
+        {/* 3. Evidence Clusters Breakdown */}
+        {evidenceClusters.length > 0 && (
+          <div className="mt-4 p-4 rounded-xl bg-slate-900/70 border border-slate-700/50 space-y-2.5">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+              <Layers className="w-4 h-4 text-sky-400" />
+              Independent Evidence Clusters ({evidenceClusters.length})
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+              {evidenceClusters.map((cluster, idx) => (
+                <div key={idx} className="p-3 rounded-lg bg-slate-950/60 border border-slate-800 space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-sky-400 font-mono">{cluster.clusterId || `C00${idx + 1}`}</span>
+                    <span className="text-[11px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-medium">
+                      {cluster.sourceCount} publication{cluster.sourceCount > 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <div className="text-xs font-semibold text-white truncate">{cluster.primaryOutlet}</div>
+                  <div className="text-[11px] text-slate-400">{cluster.clusterTheme}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 4. Earliest Identified Report Details */}
         <div className="mt-4 p-4 rounded-xl bg-slate-900/80 border border-slate-700/60">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-3">
@@ -157,7 +189,7 @@ export default function ClaimOriginCard({ originDiscovery, userClaim, evidenceCl
               </div>
               <div>
                 <span className="text-[11px] uppercase font-bold text-slate-400 block tracking-wider">
-                  Earliest Identified Report / Authority Source
+                  Earliest Identified Authority / News Dispatch
                 </span>
                 <span className="text-base font-bold text-white">
                   {publisherName}
@@ -174,7 +206,7 @@ export default function ClaimOriginCard({ originDiscovery, userClaim, evidenceCl
               )}
               {originMatchConfidence > 0 && (
                 <span className="px-2.5 py-1 text-xs font-mono font-bold rounded-lg bg-sky-500/20 text-sky-300 border border-sky-500/30">
-                  Overlap: {originMatchConfidence}%
+                  Match: {originMatchConfidence}%
                 </span>
               )}
             </div>
@@ -204,7 +236,7 @@ export default function ClaimOriginCard({ originDiscovery, userClaim, evidenceCl
           )}
         </div>
 
-        {/* 4. Distortion & Provenance Rationale */}
+        {/* 5. Distortion & Provenance Rationale */}
         {distortionAnalysis && (
           <div className="mt-4 p-4 rounded-xl bg-slate-900/60 border border-slate-700/50">
             <h4 className="text-xs font-bold uppercase tracking-wider text-sky-400 mb-1.5 flex items-center gap-1.5">
@@ -217,7 +249,7 @@ export default function ClaimOriginCard({ originDiscovery, userClaim, evidenceCl
           </div>
         )}
 
-        {/* 5. Cross-Referenced Consensus Summary */}
+        {/* 6. Cross-Referenced Consensus Summary */}
         {crossReferencedConsensus && (
           <div className="mt-4 p-3 rounded-xl bg-sky-950/30 border border-sky-500/20 flex items-center gap-2.5 text-sm text-slate-200">
             <Layers className="w-4 h-4 text-sky-400 shrink-0" />
