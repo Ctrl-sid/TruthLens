@@ -474,4 +474,46 @@ public class FactCheckEngineServiceTest {
         assertTrue(response.getExplainability().getWarningChecklist().stream()
                 .anyMatch(w -> w.toLowerCase().contains("no primary wire") || w.toLowerCase().contains("emerging")));
     }
+
+    @Test
+    @DisplayName("Corrupted OCR in news screenshot should be assessed, normalized, reconstructed and verified")
+    public void testImageVerificationWithCorruptedOcrReconstruction() {
+        ClaimVerificationRequest request = ClaimVerificationRequest.builder()
+                .type("IMAGE")
+                .content("data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP...")
+                .title("NOVAK DJOKO!C OPENING ROUNO OF US OPEN FALLING IN 5 SETS TC MARIANO NAVC")
+                .build();
+
+        ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
+
+        assertNotNull(response);
+        assertNotNull(response.getImageAnalysis());
+        assertEquals("USER_CORRECTED_OCR", response.getImageAnalysis().getClaimVerificationBasis());
+        assertNotNull(response.getImageAnalysis().getReconstructedClaim());
+        assertTrue(response.getImageAnalysis().getReconstructedClaim().toLowerCase().contains("novak djokovic"));
+        assertTrue(response.getImageAnalysis().getReconstructedClaim().toLowerCase().contains("mariano navone"));
+        assertEquals("NO_SIGNIFICANT_ANOMALY", response.getImageAnalysis().getForensicAssessment());
+        assertNotNull(response.getImageAnalysis().getOcrQualityLevel());
+        assertNotNull(response.getImageAnalysis().getForensicDisclaimer());
+    }
+
+    @Test
+    @DisplayName("Pure photograph with no extractable text should return NON-VERIFIABLE INPUT with NO_CLAIM_FOUND")
+    public void testPurePhotographNoClaim() {
+        ClaimVerificationRequest request = ClaimVerificationRequest.builder()
+                .type("IMAGE")
+                .content("")
+                .title("")
+                .build();
+
+        ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
+
+        assertNotNull(response);
+        assertEquals("NON-VERIFIABLE INPUT", response.getVerdict());
+        assertNull(response.getSupportScore());
+        assertNotNull(response.getImageAnalysis());
+        assertEquals("NO_CLAIM_FOUND", response.getImageAnalysis().getClaimExtractionStatus());
+        assertTrue(response.getImageAnalysis().isRequiresUserReview());
+    }
 }
+
