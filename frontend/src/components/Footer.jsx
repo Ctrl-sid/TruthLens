@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
-export default function Footer({ onOpenAuth, onOpenHistory, onOpenSources, onOpenMessages, onOpenAdmin, onSelectPreset }) {
+export default function Footer({ onOpenAuth, onOpenHistory, onOpenSources, onOpenMessages, onOpenAdmin }) {
   const { user } = useAuth();
   const isAdmin = user && (user.role === 'ROLE_ADMIN' || user.username === 'admin');
 
@@ -134,11 +134,6 @@ export default function Footer({ onOpenAuth, onOpenHistory, onOpenSources, onOpe
                   </button>
                 </li>
                 <li>
-                  <button className="btn btn-link text-muted p-0 text-decoration-none text-start hover-cyan small" onClick={() => scrollToSection('presets')}>
-                    Test Presets & Cases
-                  </button>
-                </li>
-                <li>
                   <button className="btn btn-link text-muted p-0 text-decoration-none text-start hover-cyan small" onClick={onOpenHistory}>
                     Verification History
                   </button>
@@ -170,12 +165,7 @@ export default function Footer({ onOpenAuth, onOpenHistory, onOpenSources, onOpe
                 <li>
                   <button
                     className="btn btn-link text-muted p-0 text-decoration-none text-start hover-cyan small"
-                    onClick={() => {
-                      if (onSelectPreset) {
-                        onSelectPreset('TEXT', 'NASA James Webb Space Telescope discovers atmospheric water vapor on distant exoplanet LHS 1140b.');
-                        scrollToSection('analyzer');
-                      }
-                    }}
+                    onClick={() => openInfoModal('Science & Space Verification', 'bi-stars', 'TruthLens cross-references astronomical and scientific announcements directly with accredited mission agencies including NASA, ESA, ISRO, and peer-reviewed journals.')}
                   >
                     Science & Space
                   </button>
@@ -183,12 +173,7 @@ export default function Footer({ onOpenAuth, onOpenHistory, onOpenSources, onOpe
                 <li>
                   <button
                     className="btn btn-link text-muted p-0 text-decoration-none text-start hover-cyan small"
-                    onClick={() => {
-                      if (onSelectPreset) {
-                        onSelectPreset('TEXT', 'World Health Organization publishes updated clinical guidelines on seasonal viral mitigation and vaccination schedules.');
-                        scrollToSection('analyzer');
-                      }
-                    }}
+                    onClick={() => openInfoModal('Public Health Verification', 'bi-heart-pulse', 'Health advisories and epidemic claims are verified against the World Health Organization (WHO), CDC, Ministry of Health registries, and accredited medical databases.')}
                   >
                     Public Health
                   </button>
@@ -196,12 +181,7 @@ export default function Footer({ onOpenAuth, onOpenHistory, onOpenSources, onOpe
                 <li>
                   <button
                     className="btn btn-link text-muted p-0 text-decoration-none text-start hover-cyan small"
-                    onClick={() => {
-                      if (onSelectPreset) {
-                        onSelectPreset('TEXT', 'Leaked Audio & Photo of World Bank CEO claiming all national debts will be erased by Friday!');
-                        scrollToSection('analyzer');
-                      }
-                    }}
+                    onClick={() => openInfoModal('Deepfakes & AI Forensics', 'bi-cpu', 'Multimedia claims are inspected using Error Level Analysis (ELA), visual compression matrices, and audio/video forensic heuristics to detect synthesized media.')}
                   >
                     Deepfakes & AI
                   </button>
@@ -209,12 +189,7 @@ export default function Footer({ onOpenAuth, onOpenHistory, onOpenSources, onOpe
                 <li>
                   <button
                     className="btn btn-link text-muted p-0 text-decoration-none text-start hover-cyan small"
-                    onClick={() => {
-                      if (onSelectPreset) {
-                        onSelectPreset('TEXT', 'SHOCKING SECRET REVEALED: Anonymous doctor leaks 100% miracle cure for all diseases that big pharma hid!');
-                        scrollToSection('analyzer');
-                      }
-                    }}
+                    onClick={() => openInfoModal('Health Misinformation', 'bi-shield-exclamation', 'Viral remedies and unproven miracle cures are cross-referenced with medical fact-checking repositories (Snopes, PolitiFact, BoomLive).')}
                   >
                     Health Misinformation
                   </button>

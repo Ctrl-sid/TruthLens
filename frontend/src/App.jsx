@@ -14,7 +14,6 @@ import ImageHeatmap from './components/Results/ImageHeatmap';
 import ClaimFeedbackModal from './components/Results/ClaimFeedbackModal';
 import UserMessagingDrawer from './components/User/UserMessagingDrawer';
 import AdminDashboard from './components/Admin/AdminDashboard';
-import SampleNewsCarousel from './components/Presets/SampleNewsCarousel';
 import AuthModal from './components/Auth/AuthModal';
 import VerificationHistoryDrawer from './components/History/VerificationHistoryDrawer';
 import SourcesModal from './components/Sources/SourcesModal';
@@ -85,11 +84,6 @@ function AppContent() {
         });
       }
     }, 1200);
-  };
-
-  const handleSelectPreset = (type, content) => {
-    setActiveTab(type);
-    handleVerify(type, content);
   };
 
   const handleSelectHistoryItem = (item) => {
@@ -305,9 +299,6 @@ function AppContent() {
               </div>
             )}
           </div>
-
-          {/* Interactive Presets Section */}
-          <SampleNewsCarousel onSelectPreset={handleSelectPreset} />
         </section>
       </main>
 
@@ -320,7 +311,6 @@ function AppContent() {
           else setShowMessagingDrawer(true);
         }}
         onOpenAdmin={() => setShowAdminDashboard(true)}
-        onSelectPreset={handleSelectPreset}
       />
 
       {/* Modals & Drawers */}
