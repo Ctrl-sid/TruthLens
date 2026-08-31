@@ -1,48 +1,218 @@
 import React from 'react';
+import { 
+  ShieldCheck, 
+  AlertTriangle, 
+  CheckCircle2, 
+  HelpCircle, 
+  FileText, 
+  Activity, 
+  Cpu, 
+  Image as ImageIcon,
+  Layers,
+  ArrowRight,
+  Info
+} from 'lucide-react';
 
 export default function ImageHeatmap({ imageAnalysis }) {
   if (!imageAnalysis) return null;
 
-  const { detectedHeadlineText, manipulationProbability, exifStatus, anomalyFlags, heatmapOverlayUrl } = imageAnalysis;
+  const {
+    imageContentType = 'NEWS_SCREENSHOT',
+    rawOcrText,
+    normalizedOcrText,
+    reconstructedClaim,
+    detectedHeadlineText,
+    claimVerificationBasis = 'RECONSTRUCTED_CLAIM',
+    ocrConfidence = 90,
+    ocrQualityLevel = 'HIGH',
+    reconstructionConfidence = 95,
+    garbageCharacterRatio = 0,
+    validWordRatio = 100,
+    claimExtractionStatus = 'CLAIM_FOUND',
+    forensicAssessment = 'NO_SIGNIFICANT_ANOMALY',
+    manipulationVerdict,
+    exifStatus = 'Stripped by Platform (Neutral)',
+    compressionAssessment = 'NORMAL',
+    pixelAnomalyAssessment = 'NOT_DETECTED',
+    forensicDisclaimer = 'Forensic indicators do not independently establish that an image has been manipulated.',
+    anomalyFlags = [],
+    heatmapOverlayUrl
+  } = imageAnalysis;
+
+  const getQualityBadge = (level) => {
+    switch (level?.toUpperCase()) {
+      case 'HIGH':
+        return <span className="px-2 py-0.5 text-xs font-bold rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">OCR Quality: HIGH</span>;
+      case 'MEDIUM':
+        return <span className="px-2 py-0.5 text-xs font-bold rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">OCR Quality: MEDIUM</span>;
+      case 'LOW':
+        return <span className="px-2 py-0.5 text-xs font-bold rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">OCR Quality: LOW</span>;
+      default:
+        return <span className="px-2 py-0.5 text-xs font-bold rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">OCR Quality: UNRELIABLE</span>;
+    }
+  };
+
+  const getForensicBadge = (assessment) => {
+    switch (assessment) {
+      case 'NO_SIGNIFICANT_ANOMALY':
+        return <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">No Significant Forensic Anomaly</span>;
+      case 'MINOR_ANOMALIES':
+        return <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">Minor Forensic Anomalies</span>;
+      case 'ANOMALIES_DETECTED':
+        return <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40">Forensic Anomalies Detected</span>;
+      default:
+        return <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-slate-500/20 text-slate-300 border border-slate-500/40">Forensics Inconclusive</span>;
+    }
+  };
 
   return (
-    <div className="p-3">
-      <div className="row g-3">
-        <div className="col-md-5">
-          <div className="bg-dark bg-opacity-40 p-2 rounded-3 border border-secondary border-opacity-25 text-center">
-            <img src={heatmapOverlayUrl} alt="Analysis Preview" className="img-fluid rounded mb-2" style={{ maxHeight: '180px', objectFit: 'cover' }} />
-            <span className="small text-muted d-block">Digital Noise Overlay & Forensic Filter</span>
-          </div>
+    <div className="space-y-4 p-2">
+      {/* 1. Header with Content Type and Extraction Status */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700/50">
+        <div className="flex items-center gap-2">
+          <ImageIcon className="w-5 h-5 text-sky-400" />
+          <span className="text-sm font-bold text-white uppercase tracking-wider">
+            Image Ingestion & Forensic Layer
+          </span>
         </div>
 
-        <div className="col-md-7">
-          <h6 className="fw-bold text-white mb-2">OCR Text Extracted</h6>
-          <p className="small text-cyan bg-dark bg-opacity-50 p-2 rounded border border-cyan border-opacity-25 mb-3 font-monospace">
-            "{detectedHeadlineText}"
-          </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+            Type: {imageContentType.replace(/_/g, ' ')}
+          </span>
+          <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30">
+            Status: {claimExtractionStatus.replace(/_/g, ' ')}
+          </span>
+        </div>
+      </div>
 
-          <div className="d-flex justify-content-between align-items-center mb-2">
-            <span className="small text-muted">Manipulation Risk:</span>
-            <span className={`fw-bold small ${manipulationProbability > 50 ? 'text-danger' : 'text-success'}`}>
-              {manipulationProbability}%
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        {/* Left Column: Noise Heatmap & Forensics (5 cols) */}
+        <div className="lg:col-span-5 space-y-3">
+          <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-center">
+            <img 
+              src={heatmapOverlayUrl || "https://images.unsplash.com/photo-1507499739999-097706ad8914?w=600&auto=format&fit=crop"} 
+              alt="Digital Forensic Preview" 
+              className="w-full h-44 object-cover rounded-lg mb-2 shadow" 
+            />
+            <span className="text-[11px] text-slate-400 font-mono block">
+              Digital Compression Noise Overlay & Forensic Filter
             </span>
           </div>
 
-          <div className="d-flex justify-content-between align-items-center mb-3">
-            <span className="small text-muted">EXIF Metadata:</span>
-            <span className="badge bg-secondary bg-opacity-30 text-light">{exifStatus}</span>
+          {/* Forensic Parameters Box */}
+          <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-700/60 space-y-2 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-slate-400">Forensic Assessment:</span>
+              {getForensicBadge(forensicAssessment)}
+            </div>
+            <div className="flex items-center justify-between pt-1 border-t border-slate-800">
+              <span className="text-slate-400">EXIF Metadata:</span>
+              <span className="font-medium text-slate-200">{exifStatus}</span>
+            </div>
+            <div className="flex items-center justify-between pt-1 border-t border-slate-800">
+              <span className="text-slate-400">Compression Profile:</span>
+              <span className="font-medium text-slate-200">{compressionAssessment}</span>
+            </div>
+            <div className="flex items-center justify-between pt-1 border-t border-slate-800">
+              <span className="text-slate-400">Pixel Inconsistencies:</span>
+              <span className="font-medium text-slate-200">{pixelAnomalyAssessment}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Three-Tier Text & OCR Quality (7 cols) */}
+        <div className="lg:col-span-7 space-y-3">
+          {/* OCR Quality Metrics Card */}
+          <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-700/60 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Cpu className="w-4 h-4 text-sky-400" />
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-300">OCR Quality Assessment</span>
+              </div>
+              {getQualityBadge(ocrQualityLevel)}
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 pt-1">
+              <div className="p-2 rounded bg-slate-950/60 border border-slate-800 text-center">
+                <span className="text-[10px] text-slate-400 block uppercase">Confidence</span>
+                <span className="text-sm font-mono font-bold text-sky-400">{ocrConfidence}%</span>
+              </div>
+              <div className="p-2 rounded bg-slate-950/60 border border-slate-800 text-center">
+                <span className="text-[10px] text-slate-400 block uppercase">Valid Words</span>
+                <span className="text-sm font-mono font-bold text-emerald-400">{validWordRatio}%</span>
+              </div>
+              <div className="p-2 rounded bg-slate-950/60 border border-slate-800 text-center">
+                <span className="text-[10px] text-slate-400 block uppercase">Noise Ratio</span>
+                <span className="text-sm font-mono font-bold text-amber-400">{garbageCharacterRatio}%</span>
+              </div>
+            </div>
           </div>
 
-          <h6 className="small text-muted text-uppercase fw-bold mb-1">Forensic Artifact Flags</h6>
-          <ul className="list-unstyled mb-0">
-            {anomalyFlags && anomalyFlags.map((flag, idx) => (
-              <li key={idx} className="small text-light opacity-90 d-flex align-items-center gap-2 mb-1">
-                <i className="bi bi-circle-fill text-warning" style={{ fontSize: '0.4rem' }}></i>
-                <span>{flag}</span>
-              </li>
-            ))}
-          </ul>
+          {/* Three-Tier Text Representation */}
+          <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-700/60 space-y-2.5 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                <FileText className="w-4 h-4 text-purple-400" />
+                Multi-Tier Text Representation
+              </span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                Basis: {claimVerificationBasis.replace(/_/g, ' ')}
+              </span>
+            </div>
+
+            {/* Reconstructed Claim */}
+            <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800">
+              <span className="text-[10px] uppercase font-bold text-sky-400 block mb-0.5">
+                Reconstructed Claim Proposition {reconstructionConfidence ? `(${reconstructionConfidence}% match)` : ''}:
+              </span>
+              <p className="text-xs text-white font-medium mb-0">
+                "{reconstructedClaim || detectedHeadlineText || 'No text extracted'}"
+              </p>
+            </div>
+
+            {/* Normalized Text */}
+            {normalizedOcrText && (
+              <div className="p-2 rounded-lg bg-slate-950/40 border border-slate-800/80 text-[11px]">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Normalized Text:</span>
+                <span className="text-slate-300 font-mono">"{normalizedOcrText}"</span>
+              </div>
+            )}
+
+            {/* Raw OCR */}
+            {rawOcrText && (
+              <div className="p-2 rounded-lg bg-slate-950/40 border border-slate-800/80 text-[11px]">
+                <span className="text-[10px] uppercase font-bold text-slate-500 block mb-0.5">Raw OCR Stream:</span>
+                <span className="text-slate-400 font-mono truncate block">"{rawOcrText}"</span>
+              </div>
+            )}
+          </div>
+
+          {/* Forensic Artifact Flags */}
+          {anomalyFlags && anomalyFlags.length > 0 && (
+            <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+                Forensic Indicator Observations
+              </span>
+              <div className="space-y-1 text-xs text-slate-300">
+                {anomalyFlags.map((flag, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0"></span>
+                    <span>{flag}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
+      </div>
+
+      {/* Forensic Non-Accusatory Disclaimer */}
+      <div className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800/80 flex items-center gap-2 text-xs text-slate-400">
+        <Info className="w-4 h-4 text-sky-400 shrink-0" />
+        <span>
+          <strong>Disclaimer:</strong> {forensicDisclaimer}
+        </span>
       </div>
     </div>
   );
