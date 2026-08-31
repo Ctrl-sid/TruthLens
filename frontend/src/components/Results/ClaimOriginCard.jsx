@@ -23,6 +23,7 @@ export default function ClaimOriginCard({ originDiscovery, userClaim, evidenceCl
   const {
     originalPublisher,
     earliestIdentifiedPublisher,
+    earliestVerifiedSourceFound,
     originalDomain,
     originalHeadline,
     originalUrl,
@@ -34,10 +35,11 @@ export default function ClaimOriginCard({ originDiscovery, userClaim, evidenceCl
     evidenceTier,
     distortionAnalysis,
     crossReferencedConsensus,
+    provenanceConfidence,
     originMatchConfidence
   } = originDiscovery;
 
-  const publisherName = earliestIdentifiedPublisher || originalPublisher || 'Unverified Online Source';
+  const publisherName = earliestVerifiedSourceFound || earliestIdentifiedPublisher || originalPublisher || 'Unverified Online Source';
   const integrityState = claimIntegrity || provenanceType || 'UNVERIFIED_ORIGIN';
 
   const getIntegrityBadge = (type) => {
@@ -114,7 +116,7 @@ export default function ClaimOriginCard({ originDiscovery, userClaim, evidenceCl
           <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center justify-between">
             <span className="flex items-center gap-1.5">
               <Network className="w-4 h-4 text-sky-400" />
-              Provenance Graph (Claim &rarr; Authority Dispatches &rarr; Verdict)
+              Provenance Graph (Claim &rarr; Earliest Authority Dispatches &rarr; Verdict)
             </span>
             <span className="text-[11px] font-mono text-sky-400 font-semibold">
               {evidenceClusters.length > 0 ? `${evidenceClusters.length} Evidence Clusters` : '1 Cluster'}
@@ -131,10 +133,10 @@ export default function ClaimOriginCard({ originDiscovery, userClaim, evidenceCl
               </p>
             </div>
 
-            {/* Node 2: Earliest Report & Stance Edge */}
+            {/* Node 2: Earliest Verified Report & Stance Edge */}
             <div className="p-3.5 rounded-xl bg-sky-950/40 border border-sky-500/40 text-center relative">
               <span className="text-[10px] uppercase font-bold text-sky-300 block mb-0.5">
-                Earliest Identified Authority
+                Earliest Verified Source Found
               </span>
               <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 inline-block mb-1">
                 {integrityState === 'AUTHENTIC_REPRODUCTION' ? 'CORROBORATES' : (integrityState === 'ALTERED_DISTORTION' ? 'CONTRADICTS' : 'REFERENCES')}
@@ -180,7 +182,7 @@ export default function ClaimOriginCard({ originDiscovery, userClaim, evidenceCl
           </div>
         )}
 
-        {/* 4. Earliest Identified Report Details */}
+        {/* 4. Earliest Verified Report Details */}
         <div className="mt-4 p-4 rounded-xl bg-slate-900/80 border border-slate-700/60">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-3">
@@ -189,7 +191,7 @@ export default function ClaimOriginCard({ originDiscovery, userClaim, evidenceCl
               </div>
               <div>
                 <span className="text-[11px] uppercase font-bold text-slate-400 block tracking-wider">
-                  Earliest Identified Authority / News Dispatch
+                  Earliest Verified Source Found / Authority Source
                 </span>
                 <span className="text-base font-bold text-white">
                   {publisherName}
@@ -204,9 +206,9 @@ export default function ClaimOriginCard({ originDiscovery, userClaim, evidenceCl
                   {publishedDate}
                 </span>
               )}
-              {originMatchConfidence > 0 && (
+              {provenanceConfidence && (
                 <span className="px-2.5 py-1 text-xs font-mono font-bold rounded-lg bg-sky-500/20 text-sky-300 border border-sky-500/30">
-                  Match: {originMatchConfidence}%
+                  Confidence: {provenanceConfidence}
                 </span>
               )}
             </div>
@@ -228,7 +230,7 @@ export default function ClaimOriginCard({ originDiscovery, userClaim, evidenceCl
                   rel="noopener noreferrer"
                   className="mt-2 text-xs font-medium text-sky-400 hover:text-sky-300 inline-flex items-center gap-1 transition-colors"
                 >
-                  <span>Inspect original report at {originalDomain || 'source'}</span>
+                  <span>Inspect report at {originalDomain || 'source'}</span>
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               )}
