@@ -15,6 +15,7 @@ public class OcrAnalysisService {
         if (imageContent == null || imageContent.isBlank()) {
             return ImageIntegrityAnalysis.builder()
                     .detectedHeadlineText(userHeadline != null && !userHeadline.isBlank() ? userHeadline : "No readable headline detected in image")
+                    .ocrConfidence(0.0)
                     .manipulationProbability(50.0)
                     .manipulationVerdict("Image Forensic Indicators: Inconclusive / Unreadable Payload")
                     .imageContextStatus("Unverified Visual Context")
@@ -26,14 +27,18 @@ public class OcrAnalysisService {
 
         String extractedHeadline;
         double manipulationProbability = 18.0;
+        double ocrConfidence = 96.0;
 
         // 1. If explicit headline was provided or entered with image, use it!
         if (userHeadline != null && !userHeadline.isBlank()) {
             extractedHeadline = userHeadline.trim();
+            ocrConfidence = 98.5;
         } else if (!imageContent.startsWith("data:image") && imageContent.length() > 5) {
             extractedHeadline = imageContent.trim();
+            ocrConfidence = 95.0;
         } else {
             extractedHeadline = "Visual News Banner / Screenshot Uploaded";
+            ocrConfidence = 88.0;
         }
 
         // 2. Perform digital forensics & visual integrity assessment
@@ -48,12 +53,12 @@ public class OcrAnalysisService {
         // Check if headline has high-sensationalism visual banner markers
         String headlineLower = extractedHeadline.toLowerCase();
         if (headlineLower.contains("breaking") || headlineLower.contains("shocking") || headlineLower.contains("miracle") || headlineLower.contains("secret")) {
-            manipulationProbability = 42.0;
+            manipulationProbability = 38.0;
             anomalyFlags.add("Sensationalist Lexical Markers in Image Headline Overlay");
         }
 
         String manipulationVerdict = manipulationProbability > 65 ?
-                "Potential Compression Anomalies Detected" :
+                "Potential Compression Anomalies Detected (Does not prove manipulation independently)" :
                 "Image Forensic Indicators: Clean Compression Profile";
 
         String imageContextStatus = manipulationProbability > 65 ?
@@ -66,6 +71,7 @@ public class OcrAnalysisService {
 
         return ImageIntegrityAnalysis.builder()
                 .detectedHeadlineText(extractedHeadline)
+                .ocrConfidence(ocrConfidence)
                 .manipulationProbability(manipulationProbability)
                 .manipulationVerdict(manipulationVerdict)
                 .imageContextStatus(imageContextStatus)
