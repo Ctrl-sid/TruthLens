@@ -5,9 +5,10 @@ export default function TruthScoreGauge({ score, verdict, badgeColor }) {
   const strokeWidth = 12;
   const normalizedRadius = radius - strokeWidth * 0.5;
   const circumference = normalizedRadius * 2 * Math.PI;
-  const strokeDashoffset = circumference - (score / 100) * circumference;
+  const displayScore = score != null ? score : 50;
+  const strokeDashoffset = circumference - (displayScore / 100) * circumference;
 
-  const isNonVerifiable = verdict === 'NON-VERIFIABLE INPUT' || verdict?.includes('NON-VERIFIABLE');
+  const isNonVerifiable = verdict === 'NON-VERIFIABLE INPUT' || verdict?.includes('NON-VERIFIABLE') || score == null;
 
   if (isNonVerifiable) {
     return (
@@ -28,10 +29,10 @@ export default function TruthScoreGauge({ score, verdict, badgeColor }) {
           className="badge px-3 py-1.5 fs-6 rounded-pill fw-bold text-uppercase mb-2"
           style={{ backgroundColor: 'rgba(100, 116, 139, 0.25)', color: '#94A3B8', border: '1px solid #64748B' }}
         >
-          <i className="bi bi-info-circle me-1"></i> Non-Verifiable Query
+          <i className="bi bi-info-circle me-1"></i> Non-Verifiable Input
         </span>
         <p className="small text-muted mb-0" style={{ fontSize: '0.825rem' }}>
-          Input lacks a declarative factual assertion for wire cross-referencing.
+          No declarative factual assertion detected. Score unassigned (N/A).
         </p>
       </div>
     );
@@ -60,9 +61,11 @@ export default function TruthScoreGauge({ score, verdict, badgeColor }) {
 
         <div className="position-absolute top-50 start-50 translate-middle text-center">
           <span className="display-6 fw-extrabold text-white d-block lh-1">
-            {score}<span className="fs-6 text-muted">%</span>
+            {displayScore}<span className="fs-6 text-muted">/100</span>
           </span>
-          <span className="small text-muted text-uppercase tracking-wider font-monospace">Genuineness</span>
+          <span className="small text-muted text-uppercase tracking-wider font-monospace" style={{ fontSize: '0.65rem' }}>
+            Support Score
+          </span>
         </div>
       </div>
 
