@@ -1,6 +1,7 @@
 package com.truthlens.api.nlp;
 
 import com.truthlens.api.dto.ClaimVerificationResponse.DecomposedClaim;
+import com.truthlens.api.dto.ClaimVerificationResponse.EntityRelationshipTriple;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -15,8 +16,8 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class ClaimDecompositionService {
 
-    private static final Pattern CASUALTY_PATTERN = Pattern.compile("(?i)\\b(?:at\\s+least\\s+)?(?:killed|died|dead|fatalities|casualties|toll)\\s+(?:reaches\\s+|to\\s+)?(?:[0-9]+|none|zero|nil|no\\s+one|several|dozens|hundreds)\\b|\\b(?:at\\s+least\\s+)?(?:[0-9]+|none|zero)\\s+(?:dead|killed|fatalities|deaths)\\b");
-    private static final Pattern MISSING_PATTERN = Pattern.compile("(?i)\\b(?:over|more\\s+than|at\\s+least|about)?\\s*(\\d+)\\+?\\s+(?:are\\s+)?missing\\b");
+    private static final Pattern CASUALTY_PATTERN = Pattern.compile("(?i)\\b(?:at\\s+least\\s+|more\\s+than\\s+|over\\s+|up\\s+to\\s+|approx(?:imately)?\\s+)?(?:killed|died|dead|fatalities|casualties|toll)\\s+(?:reaches\\s+|to\\s+)?(?:[0-9]+|none|zero|nil|no\\s+one|several|dozens|hundreds)\\b|\\b(?:at\\s+least\\s+|more\\s+than\\s+|over\\s+|up\\s+to\\s+|approx(?:imately)?\\s+)?(?:[0-9]+|none|zero)\\s+(?:dead|killed|fatalities|deaths)\\b");
+    private static final Pattern MISSING_PATTERN = Pattern.compile("(?i)\\b(?:over|more\\s+than|at\\s+least|about|up\\s+to)?\\s*(\\d+)\\+?\\s+(?:are\\s+)?missing\\b");
     private static final Pattern RELIEF_PATTERN = Pattern.compile("(?i)\\b(?:sends?|sent|dispatched|provided|offered)\\s+(?:first|second|immediate)?\\s*(?:tranche\\s+of\\s+)?(?:relief|humanitarian|medical|aid|supplies|materials|assistance)\\b");
     private static final Pattern TEMPORAL_PATTERN = Pattern.compile("(?i)\\b(?:happened|occurred|took\\s+place|in|on|during|since|at|around)\\s+(?:the\\s+year\\s+)?(?:19|20)\\d{2}|\\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\\s+\\d{1,2}(?:,\\s*(?:19|20)\\d{2})?\\b");
     private static final Pattern NEGATION_PATTERN = Pattern.compile("(?i)\\b(not|did\\s+not|never|no|none|nobody|zero|denied|denies|rejected|rejects|dismissed|failed\\s+to|without)\\b");
@@ -49,6 +50,7 @@ public class ClaimDecompositionService {
                 double weight = determineCentralityWeight(centrality, clauses.length);
                 String metric = extractTargetMetric(proposition, type);
                 boolean isNegated = NEGATION_PATTERN.matcher(proposition).find();
+                EntityRelationshipTriple triple = buildRelationshipTriple(proposition, primarySubject, type);
 
                 subClaims.add(DecomposedClaim.builder()
                         .claimText(capitalizeFirst(proposition))
@@ -56,6 +58,7 @@ public class ClaimDecompositionService {
                         .claimCentrality(centrality)
                         .claimImportanceWeight(weight)
                         .targetMetric(metric)
+                        .entityRelationship(triple)
                         .claimScore(75) // Pending verification
                         .claimVerdict("PENDING")
                         .stance("UNCERTAIN")
@@ -78,6 +81,7 @@ public class ClaimDecompositionService {
             String type = classifyClaimType(cleaned);
             String metric = extractTargetMetric(cleaned, type);
             boolean isNegated = NEGATION_PATTERN.matcher(cleaned).find();
+            EntityRelationshipTriple triple = buildRelationshipTriple(cleaned, extractSubjectContext(cleaned), type);
 
             subClaims.add(DecomposedClaim.builder()
                     .claimText(capitalizeFirst(cleaned))
@@ -85,6 +89,7 @@ public class ClaimDecompositionService {
                     .claimCentrality("PRIMARY_CLAIM")
                     .claimImportanceWeight(1.00)
                     .targetMetric(metric)
+                    .entityRelationship(triple)
                     .claimScore(75)
                     .claimVerdict("PENDING")
                     .stance("UNCERTAIN")
@@ -112,6 +117,11 @@ public class ClaimDecompositionService {
                     .claimCentrality("PRIMARY_CLAIM")
                     .claimImportanceWeight(0.40)
                     .targetMetric(extractTargetMetric(casText, "CASUALTY_COUNT"))
+                    .entityRelationship(EntityRelationshipTriple.builder()
+                            .subject(subject)
+                            .predicate("caused casualties")
+                            .objectValue(casText)
+                            .build())
                     .claimScore(75)
                     .claimVerdict("PENDING")
                     .stance("UNCERTAIN")
@@ -128,6 +138,11 @@ public class ClaimDecompositionService {
                     .claimCentrality("SUPPORTING_CLAIM")
                     .claimImportanceWeight(0.30)
                     .targetMetric(extractTargetMetric(misText, "MISSING_COUNT"))
+                    .entityRelationship(EntityRelationshipTriple.builder()
+                            .subject(subject)
+                            .predicate("resulted in missing persons")
+                            .objectValue(misText)
+                            .build())
                     .claimScore(75)
                     .claimVerdict("PENDING")
                     .stance("UNCERTAIN")
@@ -144,6 +159,11 @@ public class ClaimDecompositionService {
                     .claimCentrality("SUPPORTING_CLAIM")
                     .claimImportanceWeight(0.30)
                     .targetMetric("RELIEF_DISPATCH = TRUE")
+                    .entityRelationship(EntityRelationshipTriple.builder()
+                            .subject("Government / Responders")
+                            .predicate("dispatched relief aid")
+                            .objectValue(relText)
+                            .build())
                     .claimScore(75)
                     .claimVerdict("PENDING")
                     .stance("UNCERTAIN")
@@ -155,12 +175,37 @@ public class ClaimDecompositionService {
         return list;
     }
 
+    private EntityRelationshipTriple buildRelationshipTriple(String text, String subject, String claimType) {
+        String s = (subject != null && !subject.isBlank()) ? subject : "Entity";
+        String p = "asserts";
+        String o = text;
+
+        if ("CASUALTY_COUNT".equals(claimType)) {
+            p = "resulted in";
+        } else if ("GOVERNMENT_ACTION".equals(claimType)) {
+            p = "initiated action";
+        } else if ("TEMPORAL_DATE".equals(claimType)) {
+            p = "occurred on";
+        } else if ("LOCATION_FACT".equals(claimType)) {
+            p = "located at";
+        } else if ("ATTRIBUTION".equals(claimType)) {
+            p = "attributed to";
+        }
+
+        return EntityRelationshipTriple.builder()
+                .subject(s)
+                .predicate(p)
+                .objectValue(o)
+                .build();
+    }
+
     private String extractTargetMetric(String text, String claimType) {
         String lower = text.toLowerCase();
         if ("CASUALTY_COUNT".equals(claimType)) {
             Matcher m = Pattern.compile("(\\b(?:\\d+|none|zero)\\b)").matcher(lower);
             if (m.find()) {
-                return "CASUALTY_COUNT = " + m.group(1);
+                String operator = lower.contains("at least") ? ">= " : (lower.contains("more than") ? "> " : "= ");
+                return "CASUALTY_COUNT " + operator + m.group(1);
             }
         }
         if ("MISSING_COUNT".equals(claimType)) {
