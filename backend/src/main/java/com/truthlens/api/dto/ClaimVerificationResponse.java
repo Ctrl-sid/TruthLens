@@ -17,11 +17,14 @@ public class ClaimVerificationResponse {
     private String inputType;
     private String claimSummary;
     private Integer genuinenessScore; // Nullable for NOT_VERIFIABLE (rendered as N/A), 0 to 100 otherwise
-    private String verdict; // VERIFIED GENUINE, MOSTLY GENUINE, MIXED / CONFLICTING, INSUFFICIENT_EVIDENCE, STRONGLY CONTRADICTED, DOCUMENTED_HOAX, NOT_VERIFIABLE
+    private Integer supportScore; // Explicit alias for Evidence Support Score (0 to 100)
+    private String verdict; // VERIFIED / STRONGLY SUPPORTED, MOSTLY SUPPORTED, PARTIALLY SUPPORTED, MIXED / CONFLICTING EVIDENCE, INSUFFICIENT EVIDENCE, DEVELOPING EVENT, OUTDATED / SUPERSEDED, CONTRADICTED, STRONGLY CONTRADICTED, NON-VERIFIABLE INPUT
     private String verdictBadgeColor; // #10B981, #F59E0B, #94A3B8, #EF4444, #64748B
     private String confidence; // HIGH, MEDIUM, LOW
     private Integer confidenceScore; // 0 to 100%
     private Integer evidenceCompleteness; // 0 to 100% (e.g. 3/4 verified sub-claims = 75%)
+    private String asOfStatus; // SUPPORTED_AT_CLAIM_TIME, CURRENTLY_VALID, OUTDATED_SUPERSEDED, UNVERIFIED
+    private String distortionType; // NUMERICAL_DISTORTION, LOCATION_DISTORTION, ENTITY_DISTORTION, ATTRIBUTION_DISTORTION, POLARITY_DISTORTION, CONTEXT_DISTORTION, OMISSION_DISTORTION, NONE
     private String contradictionSeverity; // NONE, MINOR_DISCREPANCY, MODERATE_CONTRADICTION, MAJOR_CONTRADICTION, DIRECT_FACTUAL_REVERSAL
     private String failureState; // NONE, OCR_FAILED, URL_UNREACHABLE, NO_RELEVANT_EVIDENCE, INSUFFICIENT_EVIDENCE, SOURCE_CONFLICT, VERIFICATION_TIMEOUT
     private String rationale;
@@ -41,9 +44,9 @@ public class ClaimVerificationResponse {
     private ImageIntegrityAnalysis imageAnalysis; // Null if not image input
     private String timestamp;
     @Builder.Default
-    private String algorithmVersion = "2.2";
+    private String algorithmVersion = "2.3";
     @Builder.Default
-    private String scoringVersion = "2.2";
+    private String scoringVersion = "2.3";
 
     @Data
     @NoArgsConstructor
@@ -52,7 +55,7 @@ public class ClaimVerificationResponse {
     public static class ClaimContextInfo {
         @Builder.Default
         private List<String> geographicEntities = new ArrayList<>(); // e.g. ["Nepal", "India"]
-        private String domain; // e.g. "Disaster Relief & Flood Management", "Space Exploration", "Public Health"
+        private String domain; // e.g. "Disaster Relief & Emergency Response", "Space Exploration", "Public Health"
         private String claimType; // e.g. "GOVERNMENT_ACTION", "DISASTER_CASUALTY", "SCIENTIFIC_DISCOVERY"
         @Builder.Default
         private List<String> targetAuthorityInstitutions = new ArrayList<>(); // e.g. ["Nepal Police", "National Disaster Management", "Ministry of External Affairs"]
@@ -81,6 +84,16 @@ public class ClaimVerificationResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
+    public static class EntityRelationshipTriple {
+        private String subject; // e.g. "Nepal flash floods"
+        private String predicate; // e.g. "caused", "resulted in", "sent"
+        private String objectValue; // e.g. "95 deaths", "relief materials"
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
     public static class DecomposedClaim {
         private String claimText;
         private String claimType; // EVENT_OCCURRENCE, CASUALTY_COUNT, MISSING_COUNT, GOVERNMENT_ACTION, TEMPORAL_DATE, LOCATION_FACT, ATTRIBUTION, STATISTICAL_CLAIM
@@ -93,6 +106,7 @@ public class ClaimVerificationResponse {
         private String targetMetric; // e.g. "CASUALTY_COUNT = 95", "MISSING_COUNT >= 350"
         private String developingRange; // e.g. "95 - 102 reported casualties"
         private String statusReason;
+        private EntityRelationshipTriple entityRelationship;
         @Builder.Default
         private List<String> evidenceClusterIds = new ArrayList<>();
         private boolean isNegated;
@@ -122,6 +136,8 @@ public class ClaimVerificationResponse {
         private String confidenceLevel; // HIGH, MEDIUM, LOW
         private Integer confidenceScore; // 0 to 100%
         private Integer evidenceCompleteness; // 0 to 100%
+        private String asOfStatus; // SUPPORTED_AT_CLAIM_TIME, CURRENTLY_VALID, OUTDATED_SUPERSEDED
+        private String distortionType; // NUMERICAL_DISTORTION, LOCATION_DISTORTION, etc.
         @Builder.Default
         private List<String> positiveChecklist = new ArrayList<>(); // e.g. "✓ Corroborated across 2 independent wire clusters"
         @Builder.Default
@@ -171,20 +187,22 @@ public class ClaimVerificationResponse {
     @AllArgsConstructor
     @Builder
     public static class ClaimOriginDiscovery {
-        private String originalPublisher; // Fallback / Display name
-        private String earliestIdentifiedPublisher; // e.g. "Nepal Police", "The Hindu", "Reuters", "Snopes"
+        private String originalPublisher; // Fallback
+        private String earliestIdentifiedPublisher; // Display
+        private String earliestVerifiedSourceFound; // e.g. "Nepal Police", "The Hindu", "Reuters", "Snopes"
         private String originalDomain; // e.g. "thehindu.com"
         private String originalHeadline; // Exact original article title
         private String originalUrl; // Direct link
         private String publishedDate; // Publication date if available
         private String retrievalTimestamp; // Exact retrieval time
         private String provenanceType; // AUTHENTIC_REPRODUCTION, ALTERED_DISTORTION, DOCUMENTED_HOAX, UNVERIFIED_ORIGIN
-        private String provenanceStatus; // EARLIEST_RELIABLE_SOURCE_FOUND, SECONDARY_REPORT_FOUND, MULTIPLE_RELATED_SOURCES_FOUND, ORIGIN_NOT_DETERMINED
+        private String provenanceStatus; // PRIMARY_SOURCE_FOUND, EARLIEST_VERIFIED_SOURCE_FOUND, SECONDARY_SOURCE_FOUND, MULTIPLE_RELATED_SOURCES_FOUND, ORIGIN_UNDETERMINED
         private String claimIntegrity; // AUTHENTIC_REPRODUCTION, MINOR_VARIANCE, ALTERED_DISTORTION, FABRICATED_ASSERTION, DOCUMENTED_HOAX
         private String contradictionSeverity; // NONE, MINOR_DISCREPANCY, MODERATE_CONTRADICTION, MAJOR_CONTRADICTION, DIRECT_FACTUAL_REVERSAL
         private String evidenceTier; // LEVEL_1_PRIMARY, LEVEL_2_SECONDARY, LEVEL_3_FACTCHECK, LEVEL_4_REFERENCE
         private String distortionAnalysis; // Details of what was altered/manipulated
         private String crossReferencedConsensus; // e.g. "Corroborated across 3 Tier-1 wire agencies"
+        private String provenanceConfidence; // HIGH, MEDIUM, LOW
         private double originMatchConfidence; // 0.0 to 100.0%
     }
 
@@ -218,6 +236,7 @@ public class ClaimVerificationResponse {
     @Builder
     public static class ImageIntegrityAnalysis {
         private String detectedHeadlineText;
+        private Double ocrConfidence; // e.g. 95.0%
         private double manipulationProbability; // 0% to 100%
         private String manipulationVerdict; // "Image Forensic Indicators: Clean Compression Profile" vs "Potential Anomalies Detected"
         private String imageContextStatus; // "Context Matches Claim", "Misleading / Repurposed Visual Context Likely", "Unverified Context"
