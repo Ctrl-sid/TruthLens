@@ -95,7 +95,46 @@ public class FactCheckEngineService {
         if ("IMAGE".equalsIgnoreCase(request.getType())) {
             String explicitTitle = request.getTitle() != null && !request.getTitle().isBlank() ? request.getTitle().trim() : null;
             imageAnalysis = ocrAnalysisService.analyzeImageInput(contentToAnalyze, explicitTitle);
-            contentToAnalyze = imageAnalysis.getDetectedHeadlineText();
+
+            if ("NO_CLAIM_FOUND".equals(imageAnalysis.getClaimExtractionStatus()) || "PHOTOGRAPH".equals(imageAnalysis.getImageContentType())) {
+                NlpAnalysisResponse nlpResults = nlpPipelineService.processText(imageAnalysis.getDetectedHeadlineText());
+                long claimId = System.currentTimeMillis();
+                return ClaimVerificationResponse.builder()
+                        .id(claimId)
+                        .inputType("IMAGE")
+                        .claimSummary("Image Verification: No Textual Claim Extracted")
+                        .genuinenessScore(null)
+                        .supportScore(null)
+                        .verdict("NON-VERIFIABLE INPUT")
+                        .verdictBadgeColor("#64748B")
+                        .confidence("HIGH")
+                        .confidenceScore(95)
+                        .evidenceCompleteness(0)
+                        .asOfStatus("UNVERIFIED")
+                        .distortionType("NONE")
+                        .contradictionSeverity("NONE")
+                        .failureState("NONE")
+                        .rationale("No verifiable textual news claim could be extracted from this image. TruthLens requires an extracted declarative assertion or headline to perform wire cross-referencing.")
+                        .keyReasons(List.of(
+                                "Image content identified as photograph/non-textual media without declarative assertion.",
+                                "Digital forensic profile evaluated independently in the Image Forensics panel.",
+                                "You may manually enter a news headline to verify the factual context."
+                        ))
+                        .subClaims(List.of())
+                        .evidenceClusters(List.of())
+                        .sources(List.of())
+                        .nlpAnalysis(nlpResults)
+                        .imageAnalysis(imageAnalysis)
+                        .timestamp(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
+                        .build();
+            }
+
+            if (imageAnalysis.getReconstructedClaim() != null && !imageAnalysis.getReconstructedClaim().isBlank()
+                    && imageAnalysis.getReconstructionConfidence() != null && imageAnalysis.getReconstructionConfidence() >= 80.0) {
+                contentToAnalyze = imageAnalysis.getReconstructedClaim();
+            } else {
+                contentToAnalyze = imageAnalysis.getDetectedHeadlineText();
+            }
         } else if ("URL".equalsIgnoreCase(request.getType())) {
             detectedDomain = extractDomainFromUrl(contentToAnalyze);
         }
