@@ -20,7 +20,9 @@ import {
   Building2,
   Check,
   X,
-  Search
+  Search,
+  ArrowRight,
+  GitBranch
 } from 'lucide-react';
 
 export default function ExplainabilityCard({ result }) {
@@ -36,6 +38,8 @@ export default function ExplainabilityCard({ result }) {
   const confidenceScore = result.confidenceScore || explainability.confidenceScore || 75;
   const completeness = result.evidenceCompleteness != null ? result.evidenceCompleteness : (explainability.evidenceCompleteness || 85);
   const severity = result.contradictionSeverity || 'NONE';
+  const distortionType = result.distortionType || explainability.distortionType || 'NONE';
+  const asOfStatus = result.asOfStatus || explainability.asOfStatus || 'CURRENTLY_VALID';
   const context = result.claimContext || {};
   const audit = result.retrievalAudit || explainability.retrievalAudit || {};
 
@@ -84,7 +88,7 @@ export default function ExplainabilityCard({ result }) {
     }
   };
 
-  const getCentralityBadge = (centrality, weight) => {
+  const getCentralityBadge = (centrality) => {
     switch (centrality) {
       case 'PRIMARY_CLAIM':
         return <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">Primary Core Fact</span>;
@@ -95,16 +99,30 @@ export default function ExplainabilityCard({ result }) {
     }
   };
 
-  const getSeverityBadge = (sev) => {
-    if (!sev || sev === 'NONE') return null;
-    switch (sev) {
-      case 'MINOR_DISCREPANCY':
-        return <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">Minor Variance (&lt;5%)</span>;
-      case 'MODERATE_CONTRADICTION':
-        return <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30">Moderate Contradiction</span>;
-      case 'MAJOR_CONTRADICTION':
-      case 'DIRECT_FACTUAL_REVERSAL':
-        return <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-rose-500/25 text-rose-300 border border-rose-500/40">Direct Factual Reversal</span>;
+  const getDistortionBadge = (type) => {
+    if (!type || type === 'NONE') return null;
+    switch (type) {
+      case 'LOCATION_DISTORTION':
+        return <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> Location Discrepancy</span>;
+      case 'ATTRIBUTION_DISTORTION':
+        return <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1"><Building2 className="w-3.5 h-3.5" /> Attribution Mismatch</span>;
+      case 'NUMERICAL_DISTORTION':
+        return <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">Numerical Disparity</span>;
+      case 'POLARITY_DISTORTION':
+        return <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-rose-500/25 text-rose-300 border border-rose-500/40">Direct Polarity Reversal</span>;
+      case 'CONTEXT_DISTORTION':
+        return <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">Context Distortion</span>;
+      default:
+        return null;
+    }
+  };
+
+  const getAsOfBadge = (status) => {
+    switch (status) {
+      case 'SUPPORTED_AT_CLAIM_TIME':
+        return <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30 flex items-center gap-1"><Clock className="w-3 h-3" /> As-Of Claim Time: Supported (Developing)</span>;
+      case 'OUTDATED_SUPERSEDED':
+        return <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1"><Clock className="w-3 h-3" /> Status: Outdated / Superseded</span>;
       default:
         return null;
     }
@@ -119,7 +137,7 @@ export default function ExplainabilityCard({ result }) {
       return <span className="px-2 py-0.5 text-[11px] font-semibold rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">Level 3 Fact Check</span>;
     }
     if (t.includes('LEVEL_4')) {
-      return <span className="px-2 py-0.5 text-[11px] font-semibold rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">Level 4 Reference</span>;
+      return <span className="px-2 py-0.5 text-[11px] font-semibold rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">Level 4 Reference Archive</span>;
     }
     if (t.includes('LEVEL_5')) {
       return <span className="px-2 py-0.5 text-[11px] font-semibold rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">Level 5 User Social</span>;
@@ -139,8 +157,9 @@ export default function ExplainabilityCard({ result }) {
               Evidence Synthesis & Explainability Report
             </h3>
           </div>
-          <div className="flex items-center gap-2">
-            {getSeverityBadge(severity)}
+          <div className="flex flex-wrap items-center gap-2">
+            {getAsOfBadge(asOfStatus)}
+            {getDistortionBadge(distortionType)}
             {getConfidenceBadge(confidence, confidenceScore)}
           </div>
         </div>
@@ -153,7 +172,7 @@ export default function ExplainabilityCard({ result }) {
                 <Activity className="w-4 h-4 text-sky-400" />
                 Evidence Completeness
               </span>
-              <span className="text-sky-400 font-mono font-bold text-sm">{completeness}% Verified</span>
+              <span className="text-sky-400 font-mono font-bold text-sm">{completeness}% Corroborated</span>
             </div>
             <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
               <div 
@@ -164,7 +183,7 @@ export default function ExplainabilityCard({ result }) {
             <p className="text-[11px] text-slate-400 leading-snug">
               {subClaims.length > 1 ? 
                 `${subClaims.filter(s => s.claimVerdict === 'VERIFIED' || s.claimVerdict === 'MOSTLY_VERIFIED').length} of ${subClaims.length} atomic factual components independently substantiated.` :
-                "Atomic factual proposition verified against authoritative press archives."}
+                "Factual assertion evaluated against contextual authoritative records."}
             </p>
           </div>
 
@@ -287,13 +306,13 @@ export default function ExplainabilityCard({ result }) {
         </div>
       )}
 
-      {/* 5. Atomic Sub-Claims Decomposition Breakdown */}
-      {subClaims.length > 1 && (
+      {/* 5. Atomic Sub-Claims Decomposition with Entity-Relationship Triples */}
+      {subClaims.length > 0 && (
         <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-700/60 shadow-xl backdrop-blur-md space-y-3">
           <div className="flex items-center justify-between pb-2 border-b border-slate-700/50">
             <h4 className="text-sm font-bold text-white flex items-center gap-2">
               <Split className="w-4 h-4 text-purple-400" />
-              Claim Decomposition & Metric Normalization ({subClaims.length} Sub-Claims)
+              Claim Decomposition & Entity-Relationship Modeling ({subClaims.length} Proposition{subClaims.length > 1 ? 's' : ''})
             </h4>
             <span className="text-xs text-slate-400">Contextual Sub-Claim Matrix</span>
           </div>
@@ -311,20 +330,34 @@ export default function ExplainabilityCard({ result }) {
               >
                 <div className="flex items-center justify-between gap-2 mb-1.5">
                   <div className="flex items-center gap-1.5">
-                    {getCentralityBadge(sub.claimCentrality, sub.claimImportanceWeight)}
+                    {getCentralityBadge(sub.claimCentrality)}
                     <span className="text-[11px] text-slate-400 font-mono">#{idx + 1}</span>
                   </div>
                   {getStanceBadge(sub.stance)}
                 </div>
+
                 <p className="text-sm font-medium text-white mb-2">"{sub.claimText}"</p>
+
+                {/* Entity-Relationship-Value Triple */}
+                {sub.entityRelationship && sub.entityRelationship.subject && (
+                  <div className="mb-2 p-2 rounded-lg bg-slate-900/90 border border-slate-800 flex items-center gap-1.5 text-[11px] font-mono text-slate-300">
+                    <span className="text-sky-300 font-semibold">{sub.entityRelationship.subject}</span>
+                    <ArrowRight className="w-3 h-3 text-slate-500 shrink-0" />
+                    <span className="text-amber-300 font-medium">{sub.entityRelationship.predicate}</span>
+                    <ArrowRight className="w-3 h-3 text-slate-500 shrink-0" />
+                    <span className="text-emerald-300 font-semibold">{sub.entityRelationship.objectValue}</span>
+                  </div>
+                )}
+
                 {sub.targetMetric && (
                   <div className="mb-2 text-[11px] font-mono px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-sky-300 inline-block">
                     {sub.targetMetric}
                   </div>
                 )}
+
                 <div className="text-xs text-slate-300 flex items-center justify-between pt-2 border-t border-slate-800/80">
                   <span className="truncate pr-2">{sub.evidenceSummary}</span>
-                  <span className="font-bold text-sky-400 shrink-0">{sub.claimScore != null ? `${sub.claimScore}%` : 'N/A'}</span>
+                  <span className="font-bold text-sky-400 shrink-0">{sub.claimScore != null ? `${sub.claimScore}/100` : 'N/A'}</span>
                 </div>
               </div>
             ))}
