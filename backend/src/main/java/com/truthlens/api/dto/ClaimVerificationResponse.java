@@ -235,13 +235,34 @@ public class ClaimVerificationResponse {
     @AllArgsConstructor
     @Builder
     public static class ImageIntegrityAnalysis {
-        private String detectedHeadlineText;
-        private Double ocrConfidence; // e.g. 95.0%
-        private double manipulationProbability; // 0% to 100%
-        private String manipulationVerdict; // "Image Forensic Indicators: Clean Compression Profile" vs "Potential Anomalies Detected"
+        private String imageContentType; // NEWS_SCREENSHOT, SOCIAL_MEDIA_SCREENSHOT, NEWSPAPER_CLIPPING, NEWS_BANNER, ARTICLE_SCREENSHOT, INFOGRAPHIC, MEME, PHOTOGRAPH, DOCUMENT, UNKNOWN
+        private String rawOcrText; // Exact raw OCR string
+        private String normalizedOcrText; // Whitespace & punctuation normalized
+        private String reconstructedClaim; // Entity-resolved claim proposition
+        private String detectedHeadlineText; // Backwards compatible alias for reconstructedClaim or normalized text
+        private String claimVerificationBasis; // RAW_OCR, NORMALIZED_OCR, RECONSTRUCTED_CLAIM, USER_CORRECTED_OCR
+        
+        private Double ocrConfidence; // 0.0 to 100.0%
+        private String ocrQualityLevel; // HIGH, MEDIUM, LOW, UNRELIABLE
+        private Double reconstructionConfidence; // 0.0 to 100.0%
+        private Double garbageCharacterRatio; // 0.0 to 100.0%
+        private Double validWordRatio; // 0.0 to 100.0%
+        private Double entityConfidence; // 0.0 to 100.0%
+        
+        private String claimExtractionStatus; // CLAIM_FOUND, CLAIM_PARTIALLY_FOUND, CLAIM_UNCLEAR, NO_CLAIM_FOUND, USER_REVIEW_REQUIRED
+        private boolean requiresUserReview;
+
+        // Decoupled Image Forensics
+        private double manipulationProbability; // Backwards compatible anomaly percentage (0% to 100%)
+        private String forensicAssessment; // NO_SIGNIFICANT_ANOMALY, MINOR_ANOMALIES, ANOMALIES_DETECTED, STRONG_FORENSIC_CONCERNS, INCONCLUSIVE
+        private String manipulationVerdict; // Human readable summary of forensic assessment
         private String imageContextStatus; // "Context Matches Claim", "Misleading / Repurposed Visual Context Likely", "Unverified Context"
         private String exifStatus; // "Sensor Metadata Available", "Stripped by Platform (Neutral)", "Edited Metadata"
-        private List<String> anomalyFlags; // ["Visual Sensor Alignment Verified", "Standard Compression Matrix Consistency"]
+        private String compressionAssessment; // "NORMAL", "ANOMALIES_DETECTED"
+        private String pixelAnomalyAssessment; // "NOT_DETECTED", "POSSIBLE_ANOMALIES"
+        private String forensicDisclaimer; // "Forensic indicators do not independently establish that an image has been manipulated."
+        @Builder.Default
+        private List<String> anomalyFlags = new ArrayList<>();
         private String heatmapOverlayUrl;
     }
 }
