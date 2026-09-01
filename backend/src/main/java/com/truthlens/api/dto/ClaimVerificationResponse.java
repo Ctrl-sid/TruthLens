@@ -235,7 +235,8 @@ public class ClaimVerificationResponse {
     @AllArgsConstructor
     @Builder
     public static class ImageIntegrityAnalysis {
-        private String imageContentType; // NEWS_SCREENSHOT, SOCIAL_MEDIA_SCREENSHOT, NEWSPAPER_CLIPPING, NEWS_BANNER, ARTICLE_SCREENSHOT, INFOGRAPHIC, MEME, PHOTOGRAPH, DOCUMENT, UNKNOWN
+        private String imageContentType; // NEWS_SCREENSHOT, SOCIAL_MEDIA_SCREENSHOT, NEWSPAPER_CLIPPING, NEWS_BANNER, ARTICLE_SCREENSHOT, INFOGRAPHIC, MEME, PHOTOGRAPH, ILLUSTRATION, DOCUMENT, UNKNOWN
+        private String textPresence; // TEXT_PRESENT, TEXT_ABSENT, TEXT_UNCERTAIN
         private String rawOcrText; // Exact raw OCR string
         private String normalizedOcrText; // Whitespace & punctuation normalized
         private String reconstructedClaim; // Entity-resolved claim proposition
@@ -249,7 +250,7 @@ public class ClaimVerificationResponse {
         private Double validWordRatio; // 0.0 to 100.0%
         private Double entityConfidence; // 0.0 to 100.0%
         
-        private String claimExtractionStatus; // CLAIM_FOUND, CLAIM_PARTIALLY_FOUND, CLAIM_UNCLEAR, NO_CLAIM_FOUND, USER_REVIEW_REQUIRED
+        private String claimExtractionStatus; // CLAIM_READY_FOR_VERIFICATION, NO_TEXT_DETECTED, OCR_INSUFFICIENT, CLAIM_EXTRACTION_FAILED, NON_VERIFIABLE_CLAIM
         private boolean requiresUserReview;
 
         // Decoupled Image Forensics
