@@ -8,9 +8,18 @@ export default function TruthScoreGauge({ score, verdict, badgeColor }) {
   const displayScore = score != null ? score : 50;
   const strokeDashoffset = circumference - (displayScore / 100) * circumference;
 
-  const isNonVerifiable = verdict === 'NON-VERIFIABLE INPUT' || verdict?.includes('NON-VERIFIABLE') || score == null;
+  const isNonVerifiable = score == null || 
+    verdict === 'NON-VERIFIABLE INPUT' || 
+    verdict === 'NO VERIFIABLE CLAIM' || 
+    verdict === 'OCR INSUFFICIENT' || 
+    verdict?.includes('NON-VERIFIABLE') || 
+    verdict?.includes('INSUFFICIENT');
 
-  if (isNonVerifiable) {
+  if (isNonVerifiable && score == null) {
+    const isOcrInsufficient = verdict === 'OCR INSUFFICIENT';
+    const isNoClaim = verdict === 'NO VERIFIABLE CLAIM';
+    const color = badgeColor || (isOcrInsufficient ? '#D97706' : '#94A3B8');
+
     return (
       <div className="text-center p-3 d-flex flex-column align-items-center justify-content-center h-100">
         <div
@@ -18,21 +27,25 @@ export default function TruthScoreGauge({ score, verdict, badgeColor }) {
           style={{
             width: 110,
             height: 110,
-            background: 'rgba(100, 116, 139, 0.15)',
-            border: '2px dashed #64748B'
+            background: `${color}15`,
+            border: `2px dashed ${color}`
           }}
         >
-          <i className="bi bi-question-diamond-fill text-secondary fs-1"></i>
+          <i className={`bi ${isOcrInsufficient ? 'bi-file-earmark-x-fill' : 'bi-question-diamond-fill'} fs-1`} style={{ color }}></i>
         </div>
 
         <span
           className="badge px-3 py-1.5 fs-6 rounded-pill fw-bold text-uppercase mb-2"
-          style={{ backgroundColor: 'rgba(100, 116, 139, 0.25)', color: '#94A3B8', border: '1px solid #64748B' }}
+          style={{ backgroundColor: `${color}25`, color, border: `1px solid ${color}` }}
         >
-          <i className="bi bi-info-circle me-1"></i> Non-Verifiable Input
+          <i className="bi bi-info-circle me-1"></i> {verdict || 'Non-Verifiable Input'}
         </span>
         <p className="small text-muted mb-0" style={{ fontSize: '0.825rem' }}>
-          No declarative factual assertion detected. Score unassigned (N/A).
+          {isNoClaim ? 
+            "Image lacks a declarative factual assertion. Genuineness Score: N/A." :
+           (isOcrInsufficient ? 
+            "OCR quality insufficient for automated verification. Score: N/A." : 
+            "No declarative factual assertion detected. Score: N/A.")}
         </p>
       </div>
     );
