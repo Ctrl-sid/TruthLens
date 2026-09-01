@@ -4,8 +4,6 @@ import com.truthlens.api.dto.ClaimVerificationResponse.ImageIntegrityAnalysis;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Service
 public class OcrAnalysisService {
@@ -27,13 +25,17 @@ public class OcrAnalysisService {
     public ImageIntegrityAnalysis analyzeImageInput(String imageContent, String userHeadline) {
         List<String> anomalyFlags = new ArrayList<>();
 
-        if ((imageContent == null || imageContent.isBlank()) && (userHeadline == null || userHeadline.isBlank())) {
+        boolean userOverrode = userHeadline != null && !userHeadline.isBlank();
+
+        // Check if payload is completely empty
+        if ((imageContent == null || imageContent.isBlank()) && !userOverrode) {
             return ImageIntegrityAnalysis.builder()
-                    .imageContentType("UNKNOWN")
+                    .imageContentType("PHOTOGRAPH")
+                    .textPresence("TEXT_ABSENT")
                     .rawOcrText("")
                     .normalizedOcrText("")
                     .reconstructedClaim("")
-                    .detectedHeadlineText("No readable headline detected in image")
+                    .detectedHeadlineText("No readable text detected in image")
                     .claimVerificationBasis("RAW_OCR")
                     .ocrConfidence(0.0)
                     .ocrQualityLevel("UNRELIABLE")
@@ -41,7 +43,7 @@ public class OcrAnalysisService {
                     .garbageCharacterRatio(100.0)
                     .validWordRatio(0.0)
                     .entityConfidence(0.0)
-                    .claimExtractionStatus("NO_CLAIM_FOUND")
+                    .claimExtractionStatus("NO_TEXT_DETECTED")
                     .requiresUserReview(true)
                     .manipulationProbability(0.0)
                     .forensicAssessment("INCONCLUSIVE")
@@ -51,7 +53,7 @@ public class OcrAnalysisService {
                     .compressionAssessment("NORMAL")
                     .pixelAnomalyAssessment("NOT_DETECTED")
                     .forensicDisclaimer("Forensic indicators do not independently establish that an image has been manipulated.")
-                    .anomalyFlags(List.of("Unreadable or empty image payload"))
+                    .anomalyFlags(List.of("No text detected in image payload"))
                     .heatmapOverlayUrl("https://images.unsplash.com/photo-1507499739999-097706ad8914?w=600&auto=format&fit=crop")
                     .build();
         }
@@ -59,7 +61,6 @@ public class OcrAnalysisService {
         // 1. Determine raw OCR text vs User-corrected headline
         String rawOcr;
         String claimBasis;
-        boolean userOverrode = userHeadline != null && !userHeadline.isBlank();
 
         if (userOverrode) {
             rawOcr = userHeadline.trim();
@@ -68,35 +69,43 @@ public class OcrAnalysisService {
             rawOcr = imageContent.trim();
             claimBasis = "RAW_OCR";
         } else {
-            rawOcr = "Visual News Screenshot Uploaded";
+            rawOcr = "";
             claimBasis = "RAW_OCR";
         }
 
-        // 2. Classify Image Content Type
-        String imageContentType = classifyImageContentType(imageContent, rawOcr);
-
-        // 3. Assess OCR Quality & Garbage Ratios
+        // 2. Assess OCR Quality & Garbage Ratios
         OcrQualityMetrics metrics = calculateOcrQualityMetrics(rawOcr);
 
-        // 4. Normalize OCR Text
+        // 3. Detect Text Presence
+        String textPresence = detectTextPresence(rawOcr, metrics);
+
+        // 4. Classify Image Content Type
+        String imageContentType = classifyImageContentType(imageContent, rawOcr, textPresence);
+
+        // 5. Normalize OCR Text
         String normalizedOcr = normalizeOcrText(rawOcr);
 
-        // 5. Entity & Claim Reconstruction
-        ReconstructedClaimResult reconResult = reconstructClaim(normalizedOcr, rawOcr);
-        String reconstructedClaim = reconResult.reconstructedText;
-        double reconConfidence = reconResult.confidence;
+        // 6. Entity & Claim Reconstruction (ONLY when OCR is Reliable / Medium / High)
+        String reconstructedClaim = "";
+        double reconConfidence = 0.0;
 
-        // Determine effective claim verification basis if not user-corrected
-        if (!userOverrode) {
-            claimBasis = reconConfidence > 80.0 ? "RECONSTRUCTED_CLAIM" : "NORMALIZED_OCR";
+        if (textPresence.equals("TEXT_PRESENT") && (metrics.qualityLevel.equals("HIGH") || metrics.qualityLevel.equals("MEDIUM") || userOverrode)) {
+            ReconstructedClaimResult reconResult = reconstructClaim(normalizedOcr, rawOcr);
+            reconstructedClaim = reconResult.reconstructedText;
+            reconConfidence = reconResult.confidence;
+            if (!userOverrode) {
+                claimBasis = reconConfidence > 80.0 ? "RECONSTRUCTED_CLAIM" : "NORMALIZED_OCR";
+            }
         }
 
-        // 6. Claim Extraction Status
-        String claimExtractionStatus = determineClaimExtractionStatus(rawOcr, metrics, imageContentType);
-        boolean requiresUserReview = metrics.qualityLevel.equals("LOW") || metrics.qualityLevel.equals("UNRELIABLE")
-                || metrics.garbageRatio > 18.0 || claimExtractionStatus.equals("USER_REVIEW_REQUIRED");
+        // 7. Claim Extraction Status
+        String claimExtractionStatus = determineClaimExtractionStatus(rawOcr, metrics, textPresence, imageContentType);
+        boolean requiresUserReview = textPresence.equals("TEXT_UNCERTAIN")
+                || metrics.qualityLevel.equals("UNRELIABLE")
+                || metrics.qualityLevel.equals("LOW")
+                || claimExtractionStatus.equals("OCR_INSUFFICIENT");
 
-        // 7. Decoupled Image Forensics
+        // 8. Decoupled Image Forensics
         boolean isDataUrl = imageContent != null && imageContent.startsWith("data:image");
         double forensicAnomalyScore = 12.0;
 
@@ -122,12 +131,15 @@ public class OcrAnalysisService {
         String compressionAssessment = forensicAnomalyScore > 50.0 ? "ANOMALIES_DETECTED" : "NORMAL";
         String pixelAnomalyAssessment = forensicAnomalyScore > 60.0 ? "POSSIBLE_ANOMALIES" : "NOT_DETECTED";
 
+        String detectedHeadline = !reconstructedClaim.isBlank() ? reconstructedClaim : (!normalizedOcr.isBlank() ? normalizedOcr : "No readable headline detected in image");
+
         return ImageIntegrityAnalysis.builder()
                 .imageContentType(imageContentType)
+                .textPresence(textPresence)
                 .rawOcrText(rawOcr)
                 .normalizedOcrText(normalizedOcr)
                 .reconstructedClaim(reconstructedClaim)
-                .detectedHeadlineText(reconstructedClaim.isBlank() ? normalizedOcr : reconstructedClaim)
+                .detectedHeadlineText(detectedHeadline)
                 .claimVerificationBasis(claimBasis)
                 .ocrConfidence(metrics.overallConfidence)
                 .ocrQualityLevel(metrics.qualityLevel)
@@ -155,6 +167,19 @@ public class OcrAnalysisService {
     }
 
     // ==========================================
+    // Text Presence Detection
+    // ==========================================
+    public String detectTextPresence(String rawOcr, OcrQualityMetrics metrics) {
+        if (rawOcr == null || rawOcr.isBlank() || rawOcr.length() < 5) {
+            return "TEXT_ABSENT";
+        }
+        if (metrics.qualityLevel.equals("UNRELIABLE") || (metrics.garbageRatio > 25.0 && metrics.validWordRatio < 35.0)) {
+            return "TEXT_UNCERTAIN";
+        }
+        return "TEXT_PRESENT";
+    }
+
+    // ==========================================
     // OCR Quality Assessment
     // ==========================================
     public static class OcrQualityMetrics {
@@ -167,7 +192,7 @@ public class OcrAnalysisService {
 
     public OcrQualityMetrics calculateOcrQualityMetrics(String text) {
         OcrQualityMetrics metrics = new OcrQualityMetrics();
-        if (text == null || text.isBlank()) {
+        if (text == null || text.isBlank() || text.length() < 3) {
             metrics.overallConfidence = 0.0;
             metrics.qualityLevel = "UNRELIABLE";
             metrics.garbageRatio = 100.0;
@@ -232,7 +257,6 @@ public class OcrAnalysisService {
         if (rawText == null || rawText.isBlank()) return "";
 
         String cleaned = rawText
-                // Fix common OCR glyph corruptions
                 .replace("!c", "ic")
                 .replace("!C", "IC")
                 .replace("ROUNO", "ROUND")
@@ -246,7 +270,7 @@ public class OcrAnalysisService {
     }
 
     // ==========================================
-    // Entity & Claim Reconstruction
+    // Entity & Claim Reconstruction (Only Reliable OCR)
     // ==========================================
     public static class ReconstructedClaimResult {
         public String reconstructedText;
@@ -290,8 +314,8 @@ public class OcrAnalysisService {
     // ==========================================
     // Image Content Type Classification
     // ==========================================
-    public String classifyImageContentType(String imageContent, String text) {
-        if (text == null || text.isBlank() || text.length() < 10) {
+    public String classifyImageContentType(String imageContent, String text, String textPresence) {
+        if (textPresence.equals("TEXT_ABSENT") || text == null || text.isBlank() || text.length() < 8) {
             return "PHOTOGRAPH";
         }
         String lower = text.toLowerCase();
@@ -313,16 +337,16 @@ public class OcrAnalysisService {
     // ==========================================
     // Claim Extraction Status
     // ==========================================
-    private String determineClaimExtractionStatus(String rawText, OcrQualityMetrics metrics, String imageContentType) {
-        if (rawText == null || rawText.isBlank() || rawText.length() < 10 || imageContentType.equals("PHOTOGRAPH")) {
-            return "NO_CLAIM_FOUND";
+    private String determineClaimExtractionStatus(String rawText, OcrQualityMetrics metrics, String textPresence, String imageContentType) {
+        if (textPresence.equals("TEXT_ABSENT") || imageContentType.equals("PHOTOGRAPH") || imageContentType.equals("ILLUSTRATION")) {
+            return "NO_TEXT_DETECTED";
         }
-        if (metrics.qualityLevel.equals("UNRELIABLE")) {
-            return "USER_REVIEW_REQUIRED";
+        if (textPresence.equals("TEXT_UNCERTAIN") || metrics.qualityLevel.equals("UNRELIABLE") || metrics.qualityLevel.equals("LOW")) {
+            return "OCR_INSUFFICIENT";
         }
-        if (metrics.qualityLevel.equals("LOW")) {
-            return "CLAIM_PARTIALLY_FOUND";
+        if (rawText.length() < 12) {
+            return "CLAIM_EXTRACTION_FAILED";
         }
-        return "CLAIM_FOUND";
+        return "CLAIM_READY_FOR_VERIFICATION";
     }
 }
