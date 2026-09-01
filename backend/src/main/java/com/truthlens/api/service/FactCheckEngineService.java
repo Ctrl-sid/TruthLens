@@ -96,16 +96,16 @@ public class FactCheckEngineService {
             String explicitTitle = request.getTitle() != null && !request.getTitle().isBlank() ? request.getTitle().trim() : null;
             imageAnalysis = ocrAnalysisService.analyzeImageInput(contentToAnalyze, explicitTitle);
 
-            if ("NO_CLAIM_FOUND".equals(imageAnalysis.getClaimExtractionStatus()) || "PHOTOGRAPH".equals(imageAnalysis.getImageContentType())) {
+            if ("NO_TEXT_DETECTED".equals(imageAnalysis.getClaimExtractionStatus()) || "TEXT_ABSENT".equals(imageAnalysis.getTextPresence())) {
                 NlpAnalysisResponse nlpResults = nlpPipelineService.processText(imageAnalysis.getDetectedHeadlineText());
                 long claimId = System.currentTimeMillis();
                 return ClaimVerificationResponse.builder()
                         .id(claimId)
                         .inputType("IMAGE")
-                        .claimSummary("Image Verification: No Textual Claim Extracted")
-                        .genuinenessScore(null)
-                        .supportScore(null)
-                        .verdict("NON-VERIFIABLE INPUT")
+                        .claimSummary("Image Analysis: No Verifiable Text Detected")
+                        .genuinenessScore(null) // Unassigned / N/A
+                        .supportScore(null) // Unassigned / N/A
+                        .verdict("NO VERIFIABLE CLAIM")
                         .verdictBadgeColor("#64748B")
                         .confidence("HIGH")
                         .confidenceScore(95)
@@ -114,11 +114,44 @@ public class FactCheckEngineService {
                         .distortionType("NONE")
                         .contradictionSeverity("NONE")
                         .failureState("NONE")
-                        .rationale("No verifiable textual news claim could be extracted from this image. TruthLens requires an extracted declarative assertion or headline to perform wire cross-referencing.")
+                        .rationale("This image does not contain a sufficiently identifiable textual or factual claim. TruthLens cannot determine whether a news statement is genuine or fake from this image alone.")
                         .keyReasons(List.of(
-                                "Image content identified as photograph/non-textual media without declarative assertion.",
-                                "Digital forensic profile evaluated independently in the Image Forensics panel.",
-                                "You may manually enter a news headline to verify the factual context."
+                                "Image classified as photograph/illustration with no readable textual assertion.",
+                                "Digital forensics evaluated independently in the Image Forensics tab.",
+                                "To verify a news event, please upload a news screenshot or enter the headline manually."
+                        ))
+                        .subClaims(List.of())
+                        .evidenceClusters(List.of())
+                        .sources(List.of())
+                        .nlpAnalysis(nlpResults)
+                        .imageAnalysis(imageAnalysis)
+                        .timestamp(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
+                        .build();
+            }
+
+            if ("OCR_INSUFFICIENT".equals(imageAnalysis.getClaimExtractionStatus()) && explicitTitle == null) {
+                NlpAnalysisResponse nlpResults = nlpPipelineService.processText(imageAnalysis.getDetectedHeadlineText());
+                long claimId = System.currentTimeMillis();
+                return ClaimVerificationResponse.builder()
+                        .id(claimId)
+                        .inputType("IMAGE")
+                        .claimSummary("Image OCR Insufficient for Verification")
+                        .genuinenessScore(null) // Unassigned / N/A
+                        .supportScore(null) // Unassigned / N/A
+                        .verdict("OCR INSUFFICIENT")
+                        .verdictBadgeColor("#D97706")
+                        .confidence("LOW")
+                        .confidenceScore(35)
+                        .evidenceCompleteness(0)
+                        .asOfStatus("UNVERIFIED")
+                        .distortionType("NONE")
+                        .contradictionSeverity("NONE")
+                        .failureState("NONE")
+                        .rationale("TruthLens could not reliably read or extract a coherent factual claim from this image due to high noise or corrupted text. TruthLens strictly avoids generating unverified claims from low-confidence OCR.")
+                        .keyReasons(List.of(
+                                "OCR quality is unreliable (" + Math.round(imageAnalysis.getValidWordRatio() != null ? imageAnalysis.getValidWordRatio() : 0) + "% valid words).",
+                                "TruthLens prevents hallucinating or inventing meaning from corrupted text.",
+                                "Please upload a clearer screenshot, crop the headline, or enter the claim manually."
                         ))
                         .subClaims(List.of())
                         .evidenceClusters(List.of())
