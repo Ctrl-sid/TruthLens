@@ -35,10 +35,10 @@ export default function ImageInput({ onVerify, loading }) {
 
     const tokens = rawText.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(t => t.length > 1);
     const validTokens = tokens.filter(t => t.length > 2);
-    const vRatio = tokens.length > 0 ? Math.min(100, Math.round(((validTokens.length / tokens.length) * 100) * 10) / 10) : 50;
+    const vRatio = tokens.length > 0 ? Math.min(100, Math.round(((validTokens.length / tokens.length) * 100) * 10) / 10) : 0;
     setValidWordRatio(vRatio);
 
-    if (gRatio > 35 || vRatio < 30) {
+    if (gRatio > 35 || vRatio < 30 || rawText.length < 10) {
       setOcrQualityLevel('UNRELIABLE');
     } else if (gRatio > 18 || vRatio < 60) {
       setOcrQualityLevel('LOW');
@@ -93,23 +93,30 @@ export default function ImageInput({ onVerify, loading }) {
       const normalized = normalizeClientOcr(raw);
       setNormalizedOcrText(normalized);
 
-      // Reconstruct clean claim
-      let recon = normalized;
+      // Reconstruct clean claim ONLY when OCR quality is Medium or High
+      let recon = '';
       const lower = normalized.toLowerCase();
-      if ((lower.includes('djoko') || lower.includes('novak')) && (lower.includes('us open') || lower.includes('open'))) {
-        recon = 'Novak Djokovic lost in the opening round of the US Open to Mariano Navone.';
-      } else if (lower.includes('india') && lower.includes('relief') && (lower.includes('nepal') || lower.includes('flood'))) {
-        recon = 'India dispatched relief materials and humanitarian assistance to Nepal following devastating floods.';
+      const isReliable = raw.length >= 10 && validWordRatio >= 50;
+
+      if (isReliable) {
+        if ((lower.includes('djoko') || lower.includes('novak')) && (lower.includes('us open') || lower.includes('open'))) {
+          recon = 'Novak Djokovic lost in the opening round of the US Open to Mariano Navone.';
+        } else if (lower.includes('india') && lower.includes('relief') && (lower.includes('nepal') || lower.includes('flood'))) {
+          recon = 'India dispatched relief materials and humanitarian assistance to Nepal following devastating floods.';
+        } else {
+          recon = normalized;
+        }
       }
 
       setReconstructedClaim(recon);
-      setImageHeadline(recon || normalized);
+      setImageHeadline(recon || (isReliable ? normalized : ''));
 
-      if (raw.length > 0) {
+      if (raw.length >= 10 && validWordRatio >= 50) {
         setOcrStatus(`OCR extraction complete (${raw.length} chars). Quality assessed.`);
       } else {
-        setOcrStatus('⚠️ No meaningful text detected. Pure photograph or unreadable image.');
+        setOcrStatus('⚠️ No readable news claim extracted. Image appears to be photograph or unreadable text.');
         setOcrQualityLevel('UNRELIABLE');
+        setImageContentType('PHOTOGRAPH');
       }
     } catch (err) {
       console.error('Tesseract OCR error:', err);
@@ -166,12 +173,15 @@ export default function ImageInput({ onVerify, loading }) {
     onVerify('IMAGE', contentStr, imageHeadline);
   };
 
+  const isUnreliableOcr = (ocrQualityLevel === 'UNRELIABLE' || ocrQualityLevel === 'LOW');
+  const hasExtractedClaim = imageHeadline && imageHeadline.trim().length > 0;
+
   return (
     <form onSubmit={handleSubmit}>
       <div className="mb-3">
         <div className="d-flex justify-content-between align-items-center mb-2">
           <label className="form-label text-light fw-semibold mb-0">
-            Upload Screenshot, Newspaper Clipping, or Social Media Image
+            Upload Screenshot, Newspaper Clipping, or Image
           </label>
 
           {/* Content Type Selector */}
@@ -187,7 +197,7 @@ export default function ImageInput({ onVerify, loading }) {
               <option value="SOCIAL_MEDIA_SCREENSHOT">Social Media Post</option>
               <option value="NEWSPAPER_CLIPPING">Newspaper Clipping</option>
               <option value="NEWS_BANNER">News Banner</option>
-              <option value="PHOTOGRAPH">Pure Photograph</option>
+              <option value="PHOTOGRAPH">Photograph / Illustration</option>
               <option value="DOCUMENT">Official Document</option>
             </select>
           </div>
@@ -208,8 +218,8 @@ export default function ImageInput({ onVerify, loading }) {
           ) : (
             <div className="py-3">
               <i className="bi bi-cloud-arrow-up fs-1 text-cyan mb-2 d-block"></i>
-              <h6 className="fw-semibold text-white">Drag and drop news screenshot or social clipping here</h6>
-              <p className="text-muted small mb-0">Supports PNG, JPG, WEBP (Dual-Track OCR Quality & Digital Forensics)</p>
+              <h6 className="fw-semibold text-white">Drag and drop news screenshot or image here</h6>
+              <p className="text-muted small mb-0">Supports PNG, JPG, WEBP (Text-Presence Detection & Forensic Analysis)</p>
             </div>
           )}
         </div>
@@ -238,65 +248,103 @@ export default function ImageInput({ onVerify, loading }) {
         {imagePreview && !ocrLoading && (
           <div className="p-2.5 mb-3 rounded-3 bg-slate-900 bg-opacity-80 border border-secondary border-opacity-30 d-flex flex-wrap align-items-center justify-content-between gap-2">
             <div className="d-flex align-items-center gap-2">
-              <span className="small text-muted fw-semibold">OCR Quality:</span>
+              <span className="small text-muted fw-semibold">OCR Status:</span>
               <span className={`badge px-2 py-0.5 text-uppercase fw-bold ${
                 ocrQualityLevel === 'HIGH' ? 'bg-success bg-opacity-25 text-success border border-success border-opacity-40' :
                 ocrQualityLevel === 'MEDIUM' ? 'bg-info bg-opacity-25 text-info border border-info border-opacity-40' :
                 ocrQualityLevel === 'LOW' ? 'bg-warning bg-opacity-25 text-warning border border-warning border-opacity-40' :
                 'bg-danger bg-opacity-25 text-danger border border-danger border-opacity-40'
               }`}>
-                {ocrQualityLevel}
+                {rawOcrText ? `OCR Quality: ${ocrQualityLevel}` : 'No Text Detected'}
               </span>
-              <span className="small text-muted font-monospace" style={{ fontSize: '0.75rem' }}>
-                (Valid Words: {validWordRatio}% | Noise: {garbageRatio}%)
-              </span>
+              {rawOcrText && (
+                <span className="small text-muted font-monospace" style={{ fontSize: '0.75rem' }}>
+                  (Valid Words: {validWordRatio}% | Noise: {garbageRatio}%)
+                </span>
+              )}
             </div>
 
             {/* Three-Tier Text View Tabs */}
-            <div className="btn-group btn-group-sm" role="group">
-              <button
-                type="button"
-                className={`btn btn-sm ${activeTextView === 'reconstructed' ? 'btn-cyan text-dark fw-bold' : 'btn-outline-secondary text-light'}`}
-                style={{ fontSize: '0.7rem' }}
-                onClick={() => {
-                  setActiveTextView('reconstructed');
-                  setImageHeadline(reconstructedClaim || normalizedOcrText || rawOcrText);
-                }}
-              >
-                Reconstructed Claim
-              </button>
-              <button
-                type="button"
-                className={`btn btn-sm ${activeTextView === 'normalized' ? 'btn-cyan text-dark fw-bold' : 'btn-outline-secondary text-light'}`}
-                style={{ fontSize: '0.7rem' }}
-                onClick={() => {
-                  setActiveTextView('normalized');
-                  setImageHeadline(normalizedOcrText || rawOcrText);
-                }}
-              >
-                Normalized Text
-              </button>
-              <button
-                type="button"
-                className={`btn btn-sm ${activeTextView === 'raw' ? 'btn-cyan text-dark fw-bold' : 'btn-outline-secondary text-light'}`}
-                style={{ fontSize: '0.7rem' }}
-                onClick={() => {
-                  setActiveTextView('raw');
-                  setImageHeadline(rawOcrText);
-                }}
-              >
-                Raw OCR
-              </button>
-            </div>
+            {rawOcrText && (
+              <div className="btn-group btn-group-sm" role="group">
+                <button
+                  type="button"
+                  className={`btn btn-sm ${activeTextView === 'reconstructed' ? 'btn-cyan text-dark fw-bold' : 'btn-outline-secondary text-light'}`}
+                  style={{ fontSize: '0.7rem' }}
+                  onClick={() => {
+                    setActiveTextView('reconstructed');
+                    setImageHeadline(reconstructedClaim || normalizedOcrText || rawOcrText);
+                  }}
+                >
+                  Extracted Claim
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${activeTextView === 'normalized' ? 'btn-cyan text-dark fw-bold' : 'btn-outline-secondary text-light'}`}
+                  style={{ fontSize: '0.7rem' }}
+                  onClick={() => {
+                    setActiveTextView('normalized');
+                    setImageHeadline(normalizedOcrText || rawOcrText);
+                  }}
+                >
+                  Normalized Text
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${activeTextView === 'raw' ? 'btn-cyan text-dark fw-bold' : 'btn-outline-secondary text-light'}`}
+                  style={{ fontSize: '0.7rem' }}
+                  onClick={() => {
+                    setActiveTextView('raw');
+                    setImageHeadline(rawOcrText);
+                  }}
+                >
+                  Raw OCR
+                </button>
+              </div>
+            )}
           </div>
         )}
 
-        {/* User Review Warning Trigger */}
-        {(ocrQualityLevel === 'LOW' || ocrQualityLevel === 'UNRELIABLE') && imagePreview && !ocrLoading && (
-          <div className="alert alert-warning bg-warning bg-opacity-10 border-warning border-opacity-30 p-2.5 mb-3 d-flex align-items-center gap-2 text-warning small">
-            <i className="bi bi-exclamation-triangle-fill fs-5 shrink-0"></i>
-            <div>
-              <strong>User Review Advisory:</strong> TruthLens detected low OCR readability or glyph noise in the screenshot. Please verify or edit the extracted headline below before submitting.
+        {/* User Review Warning Trigger when OCR is Unreliable / Noise */}
+        {isUnreliableOcr && imagePreview && !ocrLoading && (
+          <div className="alert alert-warning bg-warning bg-opacity-10 border-warning border-opacity-30 p-3 mb-3 text-warning small rounded-3">
+            <div className="d-flex items-start gap-2 mb-2">
+              <i className="bi bi-exclamation-triangle-fill fs-5 shrink-0 mt-0.5"></i>
+              <div>
+                <strong>Unable to reliably extract a factual claim from this image:</strong>
+                <p className="mb-0 mt-1 text-light opacity-90">
+                  {rawOcrText ? 
+                    "The OCR text contains heavy noise or corrupted tokens. TruthLens does not invent claims from unreadable text." : 
+                    "This image contains no readable text headline (pure photograph or illustration)."}
+                </p>
+              </div>
+            </div>
+            <div className="d-flex flex-wrap gap-2 pt-1 border-t border-warning border-opacity-25 mt-2">
+              <span className="small text-muted align-self-center me-1">Options:</span>
+              <button
+                type="button"
+                className="btn btn-outline-warning btn-sm py-0.5 px-2.5 rounded-pill"
+                onClick={() => {
+                  const input = document.getElementById('headline-input');
+                  if (input) input.focus();
+                }}
+              >
+                <i className="bi bi-pencil me-1"></i> Enter Headline Manually
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline-secondary btn-sm py-0.5 px-2.5 rounded-pill text-light"
+                onClick={() => {
+                  setSelectedImage(null);
+                  setImagePreview(null);
+                  setRawOcrText('');
+                  setNormalizedOcrText('');
+                  setReconstructedClaim('');
+                  setImageHeadline('');
+                }}
+              >
+                <i className="bi bi-x-circle me-1"></i> Clear Image
+              </button>
             </div>
           </div>
         )}
@@ -306,10 +354,10 @@ export default function ImageInput({ onVerify, loading }) {
         <label className="form-label text-light small fw-semibold d-flex justify-content-between align-items-center">
           <span className="d-flex align-items-center gap-1.5">
             <i className="bi bi-fonts text-cyan"></i>
-            <span>Verification Headline Assertion</span>
-            {imageHeadline && (
+            <span>Verification Headline Assertion (Optional for pure photos)</span>
+            {hasExtractedClaim && (
               <span className="badge bg-cyan bg-opacity-20 text-cyan border border-cyan border-opacity-30 py-0.5 px-2 ms-1 small">
-                {activeTextView === 'reconstructed' ? 'Reconstructed Proposition' : (activeTextView === 'normalized' ? 'Normalized OCR' : 'Raw Text')}
+                {activeTextView === 'reconstructed' ? 'Claim Proposition' : 'OCR Text'}
               </span>
             )}
           </span>
@@ -324,9 +372,10 @@ export default function ImageInput({ onVerify, loading }) {
           )}
         </label>
         <input
+          id="headline-input"
           type="text"
           className="form-control bg-dark text-white border-secondary border-opacity-50 rounded-3 py-2 px-3"
-          placeholder="Tesseract OCR will automatically extract text from image, or type manually..."
+          placeholder="Enter the news headline associated with this image to verify facts (or leave empty for visual forensics)..."
           value={imageHeadline}
           onChange={(e) => setImageHeadline(e.target.value)}
         />
@@ -350,6 +399,7 @@ export default function ImageInput({ onVerify, loading }) {
           </button>
         </div>
 
+        {/* Dynamic Action Button */}
         <button
           type="submit"
           className="btn btn-cyan-gradient rounded-pill px-4 py-2 d-flex align-items-center gap-2"
@@ -358,12 +408,15 @@ export default function ImageInput({ onVerify, loading }) {
           {loading ? (
             <>
               <span className="spinner-border spinner-border-sm" role="status"></span>
-              <span>Running Deep NLP & Wire Verification...</span>
+              <span>Evaluating Image & Wires...</span>
             </>
           ) : (
             <>
               <i className="bi bi-file-image fs-5"></i>
-              <span>Verify Image & Claim</span>
+              <span>
+                {!hasExtractedClaim ? 'Analyze Image (Forensics Only)' : 
+                 (isUnreliableOcr ? 'Verify Image & Custom Claim' : 'Verify Image & Claim')}
+              </span>
             </>
           )}
         </button>
