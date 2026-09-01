@@ -10,7 +10,8 @@ import {
   Image as ImageIcon,
   Layers,
   ArrowRight,
-  Info
+  Info,
+  AlertCircle
 } from 'lucide-react';
 
 export default function ImageHeatmap({ imageAnalysis }) {
@@ -18,6 +19,7 @@ export default function ImageHeatmap({ imageAnalysis }) {
 
   const {
     imageContentType = 'NEWS_SCREENSHOT',
+    textPresence = 'TEXT_PRESENT',
     rawOcrText,
     normalizedOcrText,
     reconstructedClaim,
@@ -28,7 +30,7 @@ export default function ImageHeatmap({ imageAnalysis }) {
     reconstructionConfidence = 95,
     garbageCharacterRatio = 0,
     validWordRatio = 100,
-    claimExtractionStatus = 'CLAIM_FOUND',
+    claimExtractionStatus = 'CLAIM_READY_FOR_VERIFICATION',
     forensicAssessment = 'NO_SIGNIFICANT_ANOMALY',
     manipulationVerdict,
     exifStatus = 'Stripped by Platform (Neutral)',
@@ -65,8 +67,25 @@ export default function ImageHeatmap({ imageAnalysis }) {
     }
   };
 
+  const isNonClaimImage = claimExtractionStatus === 'NO_TEXT_DETECTED' || claimExtractionStatus === 'OCR_INSUFFICIENT' || textPresence === 'TEXT_ABSENT';
+
   return (
     <div className="space-y-4 p-2">
+      {/* Non-Claim Image Advisory Banner */}
+      {isNonClaimImage && (
+        <div className="p-4 rounded-xl bg-slate-900/90 border border-amber-500/30 space-y-2">
+          <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+            <AlertCircle className="w-5 h-5" />
+            <span>Why can't this image be verified as news?</span>
+          </div>
+          <p className="text-xs text-slate-200 leading-relaxed mb-0">
+            {claimExtractionStatus === 'NO_TEXT_DETECTED' ? 
+              "This image does not contain a sufficiently identifiable textual or factual claim (classified as a photograph or illustration). TruthLens cannot determine whether a news statement is genuine or fake from this image alone. Genuineness Score is N/A." :
+              "TruthLens could not reliably extract a coherent news claim from this image due to high noise or corrupted OCR tokens. TruthLens strictly prevents inventing claims from unreadable text."}
+          </p>
+        </div>
+      )}
+
       {/* 1. Header with Content Type and Extraction Status */}
       <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700/50">
         <div className="flex items-center gap-2">
@@ -81,6 +100,9 @@ export default function ImageHeatmap({ imageAnalysis }) {
             Type: {imageContentType.replace(/_/g, ' ')}
           </span>
           <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30">
+            Text Presence: {textPresence.replace(/_/g, ' ')}
+          </span>
+          <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
             Status: {claimExtractionStatus.replace(/_/g, ' ')}
           </span>
         </div>
@@ -162,14 +184,16 @@ export default function ImageHeatmap({ imageAnalysis }) {
             </div>
 
             {/* Reconstructed Claim */}
-            <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800">
-              <span className="text-[10px] uppercase font-bold text-sky-400 block mb-0.5">
-                Reconstructed Claim Proposition {reconstructionConfidence ? `(${reconstructionConfidence}% match)` : ''}:
-              </span>
-              <p className="text-xs text-white font-medium mb-0">
-                "{reconstructedClaim || detectedHeadlineText || 'No text extracted'}"
-              </p>
-            </div>
+            {reconstructedClaim && (
+              <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800">
+                <span className="text-[10px] uppercase font-bold text-sky-400 block mb-0.5">
+                  Reconstructed Claim Proposition {reconstructionConfidence ? `(${reconstructionConfidence}% match)` : ''}:
+                </span>
+                <p className="text-xs text-white font-medium mb-0">
+                  "{reconstructedClaim}"
+                </p>
+              </div>
+            )}
 
             {/* Normalized Text */}
             {normalizedOcrText && (
@@ -180,11 +204,13 @@ export default function ImageHeatmap({ imageAnalysis }) {
             )}
 
             {/* Raw OCR */}
-            {rawOcrText && (
+            {rawOcrText ? (
               <div className="p-2 rounded-lg bg-slate-950/40 border border-slate-800/80 text-[11px]">
                 <span className="text-[10px] uppercase font-bold text-slate-500 block mb-0.5">Raw OCR Stream:</span>
                 <span className="text-slate-400 font-mono truncate block">"{rawOcrText}"</span>
               </div>
+            ) : (
+              <p className="text-xs text-slate-400 italic mb-0">No textual news stream detected in this image.</p>
             )}
           </div>
 
