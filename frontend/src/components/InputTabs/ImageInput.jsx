@@ -9,6 +9,7 @@ export default function ImageInput({ onVerify, loading }) {
   const [normalizedOcrText, setNormalizedOcrText] = useState('');
   const [reconstructedClaim, setReconstructedClaim] = useState('');
   const [imageHeadline, setImageHeadline] = useState('');
+  const [userManuallyTyped, setUserManuallyTyped] = useState(false);
   const [activeTextView, setActiveTextView] = useState('reconstructed'); // reconstructed, normalized, raw
   
   const [ocrLoading, setOcrLoading] = useState(false);
@@ -23,30 +24,33 @@ export default function ImageInput({ onVerify, loading }) {
       setOcrQualityLevel('UNRELIABLE');
       setGarbageRatio(100);
       setValidWordRatio(0);
-      return;
+      return { qLevel: 'UNRELIABLE', gRatio: 100, vRatio: 0 };
     }
 
     let garbageCount = 0;
     for (const ch of rawText) {
-      if ("^~=\\/&_$%*#|{}[]<>`".includes(ch)) garbageCount++;
+      if ("^~=\\/&_$%*#|{}[]<>`—".includes(ch)) garbageCount++;
     }
     const gRatio = Math.min(100, Math.round(((garbageCount / rawText.length) * 100) * 10) / 10);
     setGarbageRatio(gRatio);
 
-    const tokens = rawText.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(t => t.length > 1);
+    const tokens = rawText.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(t => t.length > 0);
     const validTokens = tokens.filter(t => t.length > 2);
     const vRatio = tokens.length > 0 ? Math.min(100, Math.round(((validTokens.length / tokens.length) * 100) * 10) / 10) : 0;
     setValidWordRatio(vRatio);
 
-    if (gRatio > 35 || vRatio < 30 || rawText.length < 10) {
-      setOcrQualityLevel('UNRELIABLE');
-    } else if (gRatio > 18 || vRatio < 60) {
-      setOcrQualityLevel('LOW');
-    } else if (gRatio > 8 || vRatio < 80) {
-      setOcrQualityLevel('MEDIUM');
+    let qLevel = 'HIGH';
+    if (gRatio > 20 || vRatio < 45 || rawText.length < 10) {
+      qLevel = 'UNRELIABLE';
+    } else if (gRatio > 12 || vRatio < 60) {
+      qLevel = 'LOW';
+    } else if (gRatio > 6 || vRatio < 80) {
+      qLevel = 'MEDIUM';
     } else {
-      setOcrQualityLevel('HIGH');
+      qLevel = 'HIGH';
     }
+    setOcrQualityLevel(qLevel);
+    return { qLevel, gRatio, vRatio };
   };
 
   const normalizeClientOcr = (raw) => {
@@ -56,7 +60,7 @@ export default function ImageInput({ onVerify, loading }) {
       .replace(/ROUNO/g, 'ROUND')
       .replace(/TC MARIANO/g, 'TO MARIANO')
       .replace(/NAVC/g, 'NAVONE')
-      .replace(/[\^~=\\/&_$%*#|{}<>]/g, ' ')
+      .replace(/[\^~=\\/&_$%*#|{}<>`—]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
   };
@@ -65,6 +69,7 @@ export default function ImageInput({ onVerify, loading }) {
     setOcrLoading(true);
     setOcrProgress(0);
     setOcrStatus('Initializing Tesseract OCR neural engine...');
+    setUserManuallyTyped(false);
 
     try {
       const result = await Tesseract.recognize(imageSource, 'eng', {
@@ -88,17 +93,16 @@ export default function ImageInput({ onVerify, loading }) {
         .trim();
 
       setRawOcrText(raw);
-      assessClientOcr(raw);
+      const { qLevel, vRatio, gRatio } = assessClientOcr(raw);
 
       const normalized = normalizeClientOcr(raw);
       setNormalizedOcrText(normalized);
 
-      // Reconstruct clean claim ONLY when OCR quality is Medium or High
-      let recon = '';
-      const lower = normalized.toLowerCase();
-      const isReliable = raw.length >= 10 && validWordRatio >= 50;
+      const isReliable = qLevel !== 'UNRELIABLE' && raw.length >= 12 && vRatio >= 45 && gRatio <= 20;
 
+      let recon = '';
       if (isReliable) {
+        const lower = normalized.toLowerCase();
         if ((lower.includes('djoko') || lower.includes('novak')) && (lower.includes('us open') || lower.includes('open'))) {
           recon = 'Novak Djokovic lost in the opening round of the US Open to Mariano Navone.';
         } else if (lower.includes('india') && lower.includes('relief') && (lower.includes('nepal') || lower.includes('flood'))) {
@@ -109,13 +113,14 @@ export default function ImageInput({ onVerify, loading }) {
       }
 
       setReconstructedClaim(recon);
-      setImageHeadline(recon || (isReliable ? normalized : ''));
 
-      if (raw.length >= 10 && validWordRatio >= 50) {
-        setOcrStatus(`OCR extraction complete (${raw.length} chars). Quality assessed.`);
+      // NEVER put unreliable/garbage OCR into the headline input!
+      if (isReliable) {
+        setImageHeadline(recon || normalized);
+        setOcrStatus(`OCR extraction complete (${raw.length} chars). Quality verified.`);
       } else {
-        setOcrStatus('⚠️ No readable news claim extracted. Image appears to be photograph or unreadable text.');
-        setOcrQualityLevel('UNRELIABLE');
+        setImageHeadline('');
+        setOcrStatus('No readable news claim detected. Image appears to be a photograph or noisy illustration.');
         setImageContentType('PHOTOGRAPH');
       }
     } catch (err) {
@@ -141,6 +146,7 @@ export default function ImageInput({ onVerify, loading }) {
   };
 
   const handleSampleClick = (sampleType) => {
+    setUserManuallyTyped(false);
     if (sampleType === 'genuine') {
       const sampleText = 'NASA James Webb Space Telescope Discovers Atmospheric Water Vapor on Exoplanet';
       setImagePreview('https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600&auto=format&fit=crop');
@@ -151,6 +157,8 @@ export default function ImageInput({ onVerify, loading }) {
       setImageHeadline(sampleText);
       setImageContentType('NEWS_BANNER');
       setOcrQualityLevel('HIGH');
+      setValidWordRatio(100);
+      setGarbageRatio(0);
       setOcrStatus('Loaded authentic scientific sample.');
     } else {
       const sampleText = 'SECRET MIRACLE CURE REVEALED BY ANONYMOUS DOCTORS IN 24 HOURS!';
@@ -162,6 +170,8 @@ export default function ImageInput({ onVerify, loading }) {
       setImageHeadline(sampleText);
       setImageContentType('SOCIAL_MEDIA_SCREENSHOT');
       setOcrQualityLevel('MEDIUM');
+      setValidWordRatio(85);
+      setGarbageRatio(5);
       setOcrStatus('Loaded manipulated headline sample.');
     }
   };
@@ -170,7 +180,13 @@ export default function ImageInput({ onVerify, loading }) {
     e.preventDefault();
     if (!selectedImage) return;
     const contentStr = typeof selectedImage === 'string' ? selectedImage : (imagePreview || selectedImage.name);
-    onVerify('IMAGE', contentStr, imageHeadline);
+    
+    // Only forward headline if reliable or explicitly typed by user
+    const hasValidHeadline = imageHeadline && imageHeadline.trim().length > 0;
+    const isReliable = ocrQualityLevel === 'HIGH' || ocrQualityLevel === 'MEDIUM' || userManuallyTyped;
+    const headlineToSend = (hasValidHeadline && isReliable) ? imageHeadline.trim() : null;
+
+    onVerify('IMAGE', contentStr, headlineToSend);
   };
 
   const isUnreliableOcr = (ocrQualityLevel === 'UNRELIABLE' || ocrQualityLevel === 'LOW');
@@ -248,18 +264,18 @@ export default function ImageInput({ onVerify, loading }) {
         {imagePreview && !ocrLoading && (
           <div className="p-2.5 mb-3 rounded-3 bg-slate-900 bg-opacity-80 border border-secondary border-opacity-30 d-flex flex-wrap align-items-center justify-content-between gap-2">
             <div className="d-flex align-items-center gap-2">
-              <span className="small text-muted fw-semibold">OCR Status:</span>
+              <span className="small text-muted fw-semibold">OCR Analysis:</span>
               <span className={`badge px-2 py-0.5 text-uppercase fw-bold ${
                 ocrQualityLevel === 'HIGH' ? 'bg-success bg-opacity-25 text-success border border-success border-opacity-40' :
                 ocrQualityLevel === 'MEDIUM' ? 'bg-info bg-opacity-25 text-info border border-info border-opacity-40' :
                 ocrQualityLevel === 'LOW' ? 'bg-warning bg-opacity-25 text-warning border border-warning border-opacity-40' :
                 'bg-danger bg-opacity-25 text-danger border border-danger border-opacity-40'
               }`}>
-                {rawOcrText ? `OCR Quality: ${ocrQualityLevel}` : 'No Text Detected'}
+                {rawOcrText ? `OCR Status: ${ocrQualityLevel}` : 'No Text Detected'}
               </span>
               {rawOcrText && (
                 <span className="small text-muted font-monospace" style={{ fontSize: '0.75rem' }}>
-                  (Valid Words: {validWordRatio}% | Noise: {garbageRatio}%)
+                  (Readable: {validWordRatio}% | Noise: {garbageRatio}%)
                 </span>
               )}
             </div>
@@ -267,24 +283,26 @@ export default function ImageInput({ onVerify, loading }) {
             {/* Three-Tier Text View Tabs */}
             {rawOcrText && (
               <div className="btn-group btn-group-sm" role="group">
-                <button
-                  type="button"
-                  className={`btn btn-sm ${activeTextView === 'reconstructed' ? 'btn-cyan text-dark fw-bold' : 'btn-outline-secondary text-light'}`}
-                  style={{ fontSize: '0.7rem' }}
-                  onClick={() => {
-                    setActiveTextView('reconstructed');
-                    setImageHeadline(reconstructedClaim || normalizedOcrText || rawOcrText);
-                  }}
-                >
-                  Extracted Claim
-                </button>
+                {reconstructedClaim && (
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${activeTextView === 'reconstructed' ? 'btn-cyan text-dark fw-bold' : 'btn-outline-secondary text-light'}`}
+                    style={{ fontSize: '0.7rem' }}
+                    onClick={() => {
+                      setActiveTextView('reconstructed');
+                      setImageHeadline(reconstructedClaim);
+                    }}
+                  >
+                    Extracted Claim
+                  </button>
+                )}
                 <button
                   type="button"
                   className={`btn btn-sm ${activeTextView === 'normalized' ? 'btn-cyan text-dark fw-bold' : 'btn-outline-secondary text-light'}`}
                   style={{ fontSize: '0.7rem' }}
                   onClick={() => {
                     setActiveTextView('normalized');
-                    setImageHeadline(normalizedOcrText || rawOcrText);
+                    if (ocrQualityLevel !== 'UNRELIABLE') setImageHeadline(normalizedOcrText);
                   }}
                 >
                   Normalized Text
@@ -295,7 +313,7 @@ export default function ImageInput({ onVerify, loading }) {
                   style={{ fontSize: '0.7rem' }}
                   onClick={() => {
                     setActiveTextView('raw');
-                    setImageHeadline(rawOcrText);
+                    if (ocrQualityLevel !== 'UNRELIABLE') setImageHeadline(rawOcrText);
                   }}
                 >
                   Raw OCR
@@ -311,10 +329,10 @@ export default function ImageInput({ onVerify, loading }) {
             <div className="d-flex items-start gap-2 mb-2">
               <i className="bi bi-exclamation-triangle-fill fs-5 shrink-0 mt-0.5"></i>
               <div>
-                <strong>Unable to reliably extract a factual claim from this image:</strong>
+                <strong>No verifiable news claim detected in this image:</strong>
                 <p className="mb-0 mt-1 text-light opacity-90">
                   {rawOcrText ? 
-                    "The OCR text contains heavy noise or corrupted tokens. TruthLens does not invent claims from unreadable text." : 
+                    "The detected OCR text is too noisy or fragmented to safely identify a factual claim. TruthLens will not invent claims from unreadable text." : 
                     "This image contains no readable text headline (pure photograph or illustration)."}
                 </p>
               </div>
@@ -326,7 +344,10 @@ export default function ImageInput({ onVerify, loading }) {
                 className="btn btn-outline-warning btn-sm py-0.5 px-2.5 rounded-pill"
                 onClick={() => {
                   const input = document.getElementById('headline-input');
-                  if (input) input.focus();
+                  if (input) {
+                    input.focus();
+                    setUserManuallyTyped(true);
+                  }
                 }}
               >
                 <i className="bi bi-pencil me-1"></i> Enter Headline Manually
@@ -341,6 +362,7 @@ export default function ImageInput({ onVerify, loading }) {
                   setNormalizedOcrText('');
                   setReconstructedClaim('');
                   setImageHeadline('');
+                  setUserManuallyTyped(false);
                 }}
               >
                 <i className="bi bi-x-circle me-1"></i> Clear Image
@@ -365,7 +387,10 @@ export default function ImageInput({ onVerify, loading }) {
             <button
               type="button"
               className="btn btn-link btn-sm p-0 text-muted text-decoration-none"
-              onClick={() => setImageHeadline('')}
+              onClick={() => {
+                setImageHeadline('');
+                setUserManuallyTyped(false);
+              }}
             >
               Clear
             </button>
@@ -377,7 +402,10 @@ export default function ImageInput({ onVerify, loading }) {
           className="form-control bg-dark text-white border-secondary border-opacity-50 rounded-3 py-2 px-3"
           placeholder="Enter the news headline associated with this image to verify facts (or leave empty for visual forensics)..."
           value={imageHeadline}
-          onChange={(e) => setImageHeadline(e.target.value)}
+          onChange={(e) => {
+            setImageHeadline(e.target.value);
+            setUserManuallyTyped(true);
+          }}
         />
       </div>
 
@@ -415,7 +443,7 @@ export default function ImageInput({ onVerify, loading }) {
               <i className="bi bi-file-image fs-5"></i>
               <span>
                 {!hasExtractedClaim ? 'Analyze Image (Forensics Only)' : 
-                 (isUnreliableOcr ? 'Verify Image & Custom Claim' : 'Verify Image & Claim')}
+                 (isUnreliableOcr && userManuallyTyped ? 'Verify Image & Custom Claim' : 'Verify Image & Claim')}
               </span>
             </>
           )}
