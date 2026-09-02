@@ -1,13 +1,22 @@
 import React from 'react';
 
-export default function RationaleCard({ rationale, keyReasons, verdictBadgeColor, onOpenFeedback }) {
+export default function RationaleCard({ rationale, keyReasons, verdictBadgeColor, verdict, genuinenessScore, onOpenFeedback }) {
+  const isNonClaim = genuinenessScore == null || 
+    verdict === 'NON-VERIFIABLE IMAGE' || 
+    verdict === 'NO CLAIM DETECTED' || 
+    verdict === 'OCR UNRELIABLE' || 
+    verdict?.includes('NON-VERIFIABLE') || 
+    verdict?.includes('NO VERIFIABLE');
+
   return (
     <div className="h-100 d-flex flex-column justify-content-between">
       <div>
-        <div className="d-flex justify-content-between align-items-center mb-3">
+        <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
           <h5 className="fw-bold text-white mb-0 d-flex align-items-center gap-2">
-            <i className="bi bi-file-earmark-text text-cyan"></i>
-            <span>Why is this News Genuine or Fake?</span>
+            <i className={`bi ${isNonClaim ? 'bi-question-circle text-warning' : 'bi-file-earmark-text text-cyan'}`}></i>
+            <span>
+              {isNonClaim ? "Why can't this image/input be verified?" : "Why is this News Genuine or Fake?"}
+            </span>
           </h5>
 
           {onOpenFeedback && (
@@ -34,7 +43,7 @@ export default function RationaleCard({ rationale, keyReasons, verdictBadgeColor
             <ul className="list-unstyled mb-0 d-flex flex-column gap-2">
               {keyReasons.map((reason, idx) => (
                 <li key={idx} className="d-flex align-items-start gap-2 small text-light opacity-90">
-                  <i className="bi bi-check-circle-fill fs-6 mt-1" style={{ color: verdictBadgeColor || '#00f2fe' }}></i>
+                  <i className={`bi ${isNonClaim ? 'bi-info-circle-fill text-warning' : 'bi-check-circle-fill'}`} style={{ color: isNonClaim ? '#F59E0B' : (verdictBadgeColor || '#00f2fe') }}></i>
                   <span>{reason}</span>
                 </li>
               ))}
