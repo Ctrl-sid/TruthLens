@@ -226,6 +226,8 @@ function AppContent() {
                         rationale={result.rationale}
                         keyReasons={result.keyReasons}
                         verdictBadgeColor={result.verdictBadgeColor}
+                        verdict={result.verdict}
+                        genuinenessScore={result.genuinenessScore}
                         onOpenFeedback={() => {
                           if (!user) setShowAuthModal(true);
                           else setShowFeedbackModal(true);
