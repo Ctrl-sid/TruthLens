@@ -498,7 +498,7 @@ public class FactCheckEngineServiceTest {
     }
 
     @Test
-    @DisplayName("Pure photograph with no extractable text should return NO VERIFIABLE CLAIM with NO_TEXT_DETECTED")
+    @DisplayName("Pure photograph with no extractable text should return NON-VERIFIABLE IMAGE with NO_TEXT_DETECTED")
     public void testPurePhotographNoClaim() {
         ClaimVerificationRequest request = ClaimVerificationRequest.builder()
                 .type("IMAGE")
@@ -509,7 +509,7 @@ public class FactCheckEngineServiceTest {
         ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
 
         assertNotNull(response);
-        assertEquals("NO VERIFIABLE CLAIM", response.getVerdict());
+        assertEquals("NON-VERIFIABLE IMAGE", response.getVerdict());
         assertNull(response.getSupportScore());
         assertNull(response.getGenuinenessScore());
         assertNotNull(response.getImageAnalysis());
@@ -519,22 +519,22 @@ public class FactCheckEngineServiceTest {
     }
 
     @Test
-    @DisplayName("Garbage OCR should return OCR INSUFFICIENT without hallucinating a claim proposition")
+    @DisplayName("Garbage OCR should return NO CLAIM DETECTED without hallucinating a claim proposition")
     public void testGarbageOcrNoHallucination() {
         ClaimVerificationRequest request = ClaimVerificationRequest.builder()
                 .type("IMAGE")
-                .content("MAY || TR NS re 7 (g. l al ef —4 a, [. ud FF Eel) 4 le] ^~= /_")
+                .content("MA YI TR NS re 7 ( g. l al ef — 4 a, [. ud FF Eel ) 4 le]: Jnl CE 7 FE a ro -1")
                 .title(null)
                 .build();
 
         ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
 
         assertNotNull(response);
-        assertEquals("OCR INSUFFICIENT", response.getVerdict());
+        assertEquals("NO CLAIM DETECTED", response.getVerdict());
         assertNull(response.getSupportScore());
         assertNull(response.getGenuinenessScore());
         assertNotNull(response.getImageAnalysis());
-        assertEquals("OCR_INSUFFICIENT", response.getImageAnalysis().getClaimExtractionStatus());
+        assertEquals("OCR_UNRELIABLE", response.getImageAnalysis().getClaimExtractionStatus());
         assertEquals("", response.getImageAnalysis().getReconstructedClaim());
         assertTrue(response.getImageAnalysis().isRequiresUserReview());
     }
