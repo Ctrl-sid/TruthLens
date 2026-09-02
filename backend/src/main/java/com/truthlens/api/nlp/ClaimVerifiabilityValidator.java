@@ -71,13 +71,30 @@ public class ClaimVerifiabilityValidator {
                     .build();
         }
 
-        // 2. Check for single-character or keyboard gibberish
-        if (REPETITIVE_GIBBERISH_PATTERN.matcher(trimmed).find() || (words.length == 1 && trimmed.length() > 15 && !trimmed.contains("."))) {
-            notes.add("The submitted input appears to be random or unstructured characters.");
-            notes.add("Please provide a clear textual statement or headline.");
+        // 2. Check for single-character or keyboard gibberish / OCR noise
+        int garbageChars = 0;
+        for (char c : trimmed.toCharArray()) {
+            if ("^~=\\/&_$%*#|{}[]<>`—".indexOf(c) >= 0) {
+                garbageChars++;
+            }
+        }
+        double garbageRatio = ((double) garbageChars / trimmed.length()) * 100.0;
+        
+        int singleLetterWords = 0;
+        for (String w : words) {
+            if (w.length() <= 1 && Character.isLetterOrDigit(w.charAt(0))) {
+                singleLetterWords++;
+            }
+        }
+        double singleLetterRatio = words.length > 0 ? ((double) singleLetterWords / words.length) * 100.0 : 0.0;
+
+        if (garbageRatio > 15.0 || (words.length >= 4 && singleLetterRatio > 40.0) || REPETITIVE_GIBBERISH_PATTERN.matcher(trimmed).find() || (words.length == 1 && trimmed.length() > 15 && !trimmed.contains("."))) {
+            notes.add("The input consists of fragmented characters, unreadable OCR tokens, or unstructured noise.");
+            notes.add("TruthLens will not attempt to guess or hallucinate a claim from unreadable text.");
+            notes.add("Please provide a clear news headline or statement.");
             return ValidationResult.builder()
                     .isVerifiableClaim(false)
-                    .rejectionReason("Unstructured gibberish or random character sequence")
+                    .rejectionReason("Unreadable, fragmented, or noisy text input")
                     .advisoryNotes(notes)
                     .build();
         }
