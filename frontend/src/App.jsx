@@ -36,7 +36,7 @@ function AppContent() {
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [showMessagingDrawer, setShowMessagingDrawer] = useState(false);
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
-
+  const [uploadedImagePreview, setUploadedImagePreview] = useState(null);
   const [history, setHistory] = useState([]);
   const prevUserRef = useRef(null);
 
@@ -62,6 +62,11 @@ function AppContent() {
   const handleVerify = async (type, content, title = '') => {
     setLoading(true);
     setResult(null);
+    if (type === 'IMAGE') {
+      setUploadedImagePreview(content);
+    } else {
+      setUploadedImagePreview(null);
+    }
 
     // Simulate multi-step scanner timing for realistic UX
     setTimeout(async () => {
@@ -296,7 +301,12 @@ function AppContent() {
                   )}
                   {activeResultTab === 'sources' && <SourceEvidenceList sources={result.sources} />}
                   {activeResultTab === 'nlp' && <NlpAnalysisCard nlpData={result.nlpAnalysis} />}
-                  {activeResultTab === 'image' && <ImageHeatmap imageAnalysis={result.imageAnalysis} />}
+                  {activeResultTab === 'image' && (
+                    <ImageHeatmap 
+                      imageAnalysis={result.imageAnalysis} 
+                      uploadedImage={uploadedImagePreview || result.imageAnalysis?.heatmapOverlayUrl} 
+                    />
+                  )}
                 </div>
               </div>
             )}
