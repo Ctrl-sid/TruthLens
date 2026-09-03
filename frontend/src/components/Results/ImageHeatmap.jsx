@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   ShieldCheck, 
   AlertTriangle, 
@@ -11,10 +11,14 @@ import {
   Layers,
   ArrowRight,
   Info,
-  AlertCircle
+  AlertCircle,
+  Eye,
+  Sliders
 } from 'lucide-react';
 
-export default function ImageHeatmap({ imageAnalysis }) {
+export default function ImageHeatmap({ imageAnalysis, uploadedImage }) {
+  const [forensicFilter, setForensicFilter] = useState('ela'); // 'original', 'ela', 'compression'
+
   if (!imageAnalysis) return null;
 
   const {
@@ -67,7 +71,19 @@ export default function ImageHeatmap({ imageAnalysis }) {
     }
   };
 
-  const isNonClaimImage = claimExtractionStatus === 'NO_TEXT_DETECTED' || claimExtractionStatus === 'OCR_INSUFFICIENT' || textPresence === 'TEXT_ABSENT';
+  const isNonClaimImage = claimExtractionStatus === 'NO_TEXT_DETECTED' || claimExtractionStatus === 'NO_CLAIM_DETECTED' || claimExtractionStatus === 'OCR_UNRELIABLE' || textPresence === 'TEXT_ABSENT';
+  const displayImage = uploadedImage || heatmapOverlayUrl;
+
+  const getFilterStyle = () => {
+    switch (forensicFilter) {
+      case 'ela':
+        return { filter: 'contrast(175%) invert(25%) hue-rotate(190deg) brightness(1.1)' };
+      case 'compression':
+        return { filter: 'contrast(220%) grayscale(70%) brightness(0.95)' };
+      default:
+        return {};
+    }
+  };
 
   return (
     <div className="space-y-4 p-2">
@@ -112,13 +128,64 @@ export default function ImageHeatmap({ imageAnalysis }) {
         {/* Left Column: Noise Heatmap & Forensics (5 cols) */}
         <div className="lg:col-span-5 space-y-3">
           <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-center">
-            <img 
-              src={heatmapOverlayUrl || "https://images.unsplash.com/photo-1507499739999-097706ad8914?w=600&auto=format&fit=crop"} 
-              alt="Digital Forensic Preview" 
-              className="w-full h-44 object-cover rounded-lg mb-2 shadow" 
-            />
+            {displayImage ? (
+              <div className="position-relative overflow-hidden rounded-lg mb-2">
+                <img 
+                  src={displayImage} 
+                  alt="Uploaded Image Forensic Preview" 
+                  className="w-full h-48 object-contain bg-black/40 rounded-lg shadow transition-all duration-300"
+                  style={getFilterStyle()}
+                />
+              </div>
+            ) : (
+              <div className="w-full h-48 rounded-lg bg-slate-900 flex items-center justify-center text-slate-500 text-xs mb-2">
+                No visual image payload loaded
+              </div>
+            )}
+
+            {/* Filter Selector */}
+            {displayImage && (
+              <div className="flex items-center justify-center gap-1 mb-2">
+                <button
+                  type="button"
+                  className={`px-2 py-0.5 text-[10px] font-semibold rounded-full border transition-all ${
+                    forensicFilter === 'original' 
+                      ? 'bg-sky-500/30 text-sky-300 border-sky-400' 
+                      : 'bg-slate-900 text-slate-400 border-slate-700 hover:text-white'
+                  }`}
+                  onClick={() => setForensicFilter('original')}
+                >
+                  Original
+                </button>
+                <button
+                  type="button"
+                  className={`px-2 py-0.5 text-[10px] font-semibold rounded-full border transition-all ${
+                    forensicFilter === 'ela' 
+                      ? 'bg-purple-500/30 text-purple-300 border-purple-400' 
+                      : 'bg-slate-900 text-slate-400 border-slate-700 hover:text-white'
+                  }`}
+                  onClick={() => setForensicFilter('ela')}
+                >
+                  ELA / Noise
+                </button>
+                <button
+                  type="button"
+                  className={`px-2 py-0.5 text-[10px] font-semibold rounded-full border transition-all ${
+                    forensicFilter === 'compression' 
+                      ? 'bg-amber-500/30 text-amber-300 border-amber-400' 
+                      : 'bg-slate-900 text-slate-400 border-slate-700 hover:text-white'
+                  }`}
+                  onClick={() => setForensicFilter('compression')}
+                >
+                  Compression
+                </button>
+              </div>
+            )}
+
             <span className="text-[11px] text-slate-400 font-mono block">
-              Digital Compression Noise Overlay & Forensic Filter
+              {forensicFilter === 'original' ? 'Direct Uploaded Visual Preview' :
+               forensicFilter === 'ela' ? 'Error Level Analysis (ELA) Noise Spectrum' :
+               'Quantization Matrix & Compression Discrepancy View'}
             </span>
           </div>
 
@@ -184,7 +251,7 @@ export default function ImageHeatmap({ imageAnalysis }) {
             </div>
 
             {/* Reconstructed Claim */}
-            {reconstructedClaim && (
+            {reconstructedClaim ? (
               <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800">
                 <span className="text-[10px] uppercase font-bold text-sky-400 block mb-0.5">
                   Reconstructed Claim Proposition {reconstructionConfidence ? `(${reconstructionConfidence}% match)` : ''}:
@@ -193,7 +260,7 @@ export default function ImageHeatmap({ imageAnalysis }) {
                   "{reconstructedClaim}"
                 </p>
               </div>
-            )}
+            ) : null}
 
             {/* Normalized Text */}
             {normalizedOcrText && (
