@@ -122,6 +122,10 @@ public class OcrAnalysisService {
                 (!reconstructedClaim.isBlank() ? reconstructedClaim : normalizedOcr) : 
                 "No verifiable news claim detected in image";
 
+        String overlayUrl = (imageContent != null && (imageContent.startsWith("data:image") || imageContent.startsWith("http"))) 
+                ? imageContent 
+                : null;
+
         return ImageIntegrityAnalysis.builder()
                 .imageContentType(imageContentType)
                 .textPresence(textPresence)
@@ -147,7 +151,7 @@ public class OcrAnalysisService {
                 .pixelAnomalyAssessment(pixelAnomalyAssessment)
                 .forensicDisclaimer("Forensic indicators do not independently establish that an image has been manipulated.")
                 .anomalyFlags(anomalyFlags)
-                .heatmapOverlayUrl("https://images.unsplash.com/photo-1507499739999-097706ad8914?w=600&auto=format&fit=crop")
+                .heatmapOverlayUrl(overlayUrl)
                 .build();
     }
 
