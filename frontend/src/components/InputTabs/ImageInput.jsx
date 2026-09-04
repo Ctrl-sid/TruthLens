@@ -370,6 +370,63 @@ export default function ImageInput({ onVerify, loading }) {
             </div>
           </div>
         )}
+
+        {/* User Confirmation for Uncertain/Moderate OCR (Spec #7) */}
+        {imagePreview && !ocrLoading && (ocrQualityLevel === 'MEDIUM' || ocrQualityLevel === 'LOW') && hasExtractedClaim && (
+          <div className="p-3 mb-3 rounded-3 bg-dark bg-opacity-80 border border-info border-opacity-40 text-light small shadow">
+            <div className="d-flex items-center justify-content-between gap-2 mb-2">
+              <div className="d-flex items-center gap-2">
+                <i className="bi bi-patch-question-fill text-info fs-5"></i>
+                <span className="fw-bold text-info">Possible Claim Detected</span>
+              </div>
+              <span className="badge bg-info bg-opacity-25 text-info border border-info border-opacity-40">
+                OCR Quality: {ocrQualityLevel} ({validWordRatio}% valid words)
+              </span>
+            </div>
+            <div className="p-2.5 rounded bg-slate-950 border border-slate-800 text-cyan font-monospace mb-2 text-xs">
+              "{imageHeadline}"
+            </div>
+            <p className="text-muted text-[11px] mb-2">
+              Is this the exact news claim contained in your uploaded image? You can confirm, edit, or cancel before verification:
+            </p>
+            <div className="d-flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="btn btn-sm btn-cyan text-dark fw-bold px-3 py-1 rounded-pill"
+                onClick={() => {
+                  setUserManuallyTyped(true);
+                  setOcrStatus("Claim confirmed by user. Ready for verification.");
+                }}
+              >
+                <i className="bi bi-check2-circle me-1"></i> Verify This Claim
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary text-light px-3 py-1 rounded-pill"
+                onClick={() => {
+                  const input = document.getElementById('headline-input');
+                  if (input) {
+                    input.focus();
+                    setUserManuallyTyped(true);
+                  }
+                }}
+              >
+                <i className="bi bi-pencil me-1"></i> Edit Claim
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-danger px-2.5 py-1 rounded-pill"
+                onClick={() => {
+                  setImageHeadline('');
+                  setUserManuallyTyped(false);
+                  setOcrStatus("Claim extraction cancelled. Image will be evaluated as pure visual.");
+                }}
+              >
+                <i className="bi bi-x me-1"></i> Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="mb-4">

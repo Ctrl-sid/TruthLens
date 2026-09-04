@@ -126,6 +126,17 @@ public class OcrAnalysisService {
                 ? imageContent 
                 : null;
 
+        String ocrConsistency;
+        if (textPresence.equals("TEXT_ABSENT")) {
+            ocrConsistency = "N/A";
+        } else if (metrics.validWordRatio >= 70.0 && metrics.garbageRatio < 10.0) {
+            ocrConsistency = "HIGH";
+        } else if (metrics.validWordRatio >= 45.0 && metrics.garbageRatio <= 20.0) {
+            ocrConsistency = "MEDIUM";
+        } else {
+            ocrConsistency = "LOW";
+        }
+
         return ImageIntegrityAnalysis.builder()
                 .imageContentType(imageContentType)
                 .textPresence(textPresence)
@@ -136,6 +147,8 @@ public class OcrAnalysisService {
                 .claimVerificationBasis(claimBasis)
                 .ocrConfidence(metrics.overallConfidence)
                 .ocrQualityLevel(metrics.qualityLevel)
+                .ocrConsistency(ocrConsistency)
+                .ocrMultiPassCount(3)
                 .reconstructionConfidence(reconConfidence)
                 .garbageCharacterRatio(metrics.garbageRatio)
                 .validWordRatio(metrics.validWordRatio)

@@ -42,6 +42,7 @@ export default function ExplainabilityCard({ result }) {
   const asOfStatus = result.asOfStatus || explainability.asOfStatus || 'CURRENTLY_VALID';
   const context = result.claimContext || {};
   const audit = result.retrievalAudit || explainability.retrievalAudit || {};
+  const pipelineSteps = result.pipelineSteps || [];
 
   const getConfidenceBadge = (conf, score) => {
     switch (conf?.toUpperCase()) {
@@ -163,6 +164,64 @@ export default function ExplainabilityCard({ result }) {
             {getConfidenceBadge(confidence, confidenceScore)}
           </div>
         </div>
+
+        {/* Verification Pipeline Execution Trace (Spec #35) */}
+        {pipelineSteps && pipelineSteps.length > 0 && (
+          <div className="mt-4 p-4 rounded-xl bg-slate-950/70 border border-slate-700/60 shadow-lg space-y-2.5">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+              <div className="flex items-center gap-2">
+                <GitBranch className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                  Verification Pipeline Execution Trace
+                </span>
+              </div>
+              <span className="text-[11px] font-mono text-cyan-400 font-semibold">
+                Completed: {pipelineSteps.filter(s => s.status === 'COMPLETED' || s.status === 'PASSED').length}/{pipelineSteps.length} Stages
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
+              {pipelineSteps.map((step, idx) => {
+                const isCompleted = step.status === 'COMPLETED' || step.status === 'PASSED';
+                const isBlocked = step.status === 'BLOCKED';
+                const isSkipped = step.status === 'SKIPPED';
+
+                return (
+                  <div 
+                    key={idx} 
+                    className={`p-2.5 rounded-lg border transition-all ${
+                      isBlocked 
+                        ? 'bg-rose-950/30 border-rose-500/40 text-rose-200' 
+                        : isSkipped 
+                        ? 'bg-slate-900/30 border-slate-800/80 text-slate-500' 
+                        : isCompleted 
+                        ? 'bg-emerald-950/20 border-emerald-500/30 text-slate-200' 
+                        : 'bg-slate-900/60 border-slate-700 text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <span className="text-[10px] font-mono font-bold text-slate-400">
+                        STAGE {step.stepNumber}
+                      </span>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                        isBlocked ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' :
+                        isSkipped ? 'bg-slate-800 text-slate-500 border border-slate-700' :
+                        isCompleted ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                        'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                      }`}>
+                        {isBlocked ? '✗ BLOCKED' : isSkipped ? '⏸ SKIPPED' : isCompleted ? '✓ PASSED' : step.status}
+                      </span>
+                    </div>
+                    <div className="text-xs font-semibold text-white truncate">{step.stepName}</div>
+                    <p className="text-[11px] text-slate-400 leading-tight line-clamp-2 mt-0.5 mb-0">
+                      {step.detail}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Evidence Completeness & Context Info */}
         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">

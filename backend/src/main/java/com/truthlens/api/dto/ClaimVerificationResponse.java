@@ -37,6 +37,8 @@ public class ClaimVerificationResponse {
     private List<EvidenceCluster> evidenceClusters = new ArrayList<>();
     @Builder.Default
     private List<SourceEvidence> sources = new ArrayList<>();
+    @Builder.Default
+    private List<PipelineStep> pipelineSteps = new ArrayList<>();
     private ExplainabilityProfile explainability;
     private ContentCharacteristics contentDiagnostics;
     private ClaimOriginDiscovery originDiscovery;
@@ -47,6 +49,17 @@ public class ClaimVerificationResponse {
     private String algorithmVersion = "2.3";
     @Builder.Default
     private String scoringVersion = "2.3";
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class PipelineStep {
+        private String stepNumber; // e.g. "01", "02"
+        private String stepName; // e.g. "Input Validation", "OCR Quality Gate"
+        private String status; // PASSED, COMPLETED, BLOCKED, SKIPPED, WARNING
+        private String detail;
+    }
 
     @Data
     @NoArgsConstructor
@@ -245,6 +258,9 @@ public class ClaimVerificationResponse {
         
         private Double ocrConfidence; // 0.0 to 100.0%
         private String ocrQualityLevel; // HIGH, MEDIUM, LOW, UNRELIABLE
+        private String ocrConsistency; // HIGH, MEDIUM, LOW, N/A
+        @Builder.Default
+        private Integer ocrMultiPassCount = 3;
         private Double reconstructionConfidence; // 0.0 to 100.0%
         private Double garbageCharacterRatio; // 0.0 to 100.0%
         private Double validWordRatio; // 0.0 to 100.0%

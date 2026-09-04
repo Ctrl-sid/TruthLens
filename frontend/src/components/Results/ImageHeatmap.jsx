@@ -222,10 +222,14 @@ export default function ImageHeatmap({ imageAnalysis, uploadedImage }) {
               {getQualityBadge(ocrQualityLevel)}
             </div>
 
-            <div className="grid grid-cols-3 gap-2 pt-1">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
               <div className="p-2 rounded bg-slate-950/60 border border-slate-800 text-center">
                 <span className="text-[10px] text-slate-400 block uppercase">Confidence</span>
                 <span className="text-sm font-mono font-bold text-sky-400">{ocrConfidence}%</span>
+              </div>
+              <div className="p-2 rounded bg-slate-950/60 border border-slate-800 text-center">
+                <span className="text-[10px] text-slate-400 block uppercase">Consistency</span>
+                <span className="text-sm font-mono font-bold text-cyan-400">{imageAnalysis.ocrConsistency || 'HIGH'}</span>
               </div>
               <div className="p-2 rounded bg-slate-950/60 border border-slate-800 text-center">
                 <span className="text-[10px] text-slate-400 block uppercase">Valid Words</span>
