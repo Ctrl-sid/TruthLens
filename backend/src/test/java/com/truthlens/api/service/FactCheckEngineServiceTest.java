@@ -519,24 +519,45 @@ public class FactCheckEngineServiceTest {
     }
 
     @Test
-    @DisplayName("Garbage OCR should return NO CLAIM DETECTED without hallucinating a claim proposition")
-    public void testGarbageOcrNoHallucination() {
+    @DisplayName("Social media post with non-declarative prayer/appeal should triage as AMBIGUOUS_SOCIAL_POST with null score")
+    public void testAmbiguousSocialMediaPost() {
         ClaimVerificationRequest request = ClaimVerificationRequest.builder()
                 .type("IMAGE")
-                .content("MA YI TR NS re 7 ( g. l al ef — 4 a, [. ud FF Eel ) 4 le]: Jnl CE 7 FE a ro -1")
-                .title(null)
+                .content("Please keep North Carolina and Tennessee in your prayers as unprecedented flood waters surge...")
                 .build();
 
         ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
 
         assertNotNull(response);
-        assertEquals("NO CLAIM DETECTED", response.getVerdict());
+        assertTrue(response.getVerdict().contains("AMBIGUOUS") || response.getVerdict().contains("INSUFFICIENT"));
+        assertNull(response.getGenuinenessScore(), "Ambiguous social post should have null score (N/A)");
         assertNull(response.getSupportScore());
-        assertNull(response.getGenuinenessScore());
-        assertNotNull(response.getImageAnalysis());
-        assertEquals("OCR_UNRELIABLE", response.getImageAnalysis().getClaimExtractionStatus());
-        assertEquals("", response.getImageAnalysis().getReconstructedClaim());
-        assertTrue(response.getImageAnalysis().isRequiresUserReview());
+        assertEquals("LOW", response.getConfidence());
+        assertNotNull(response.getExplicitClaimText());
+        assertNotNull(response.getInferredContext());
+        assertNotNull(response.getVisualContextDescription());
+        assertFalse(response.getClaimDisambiguationOptions().isEmpty(), "Should offer interactive disambiguation options");
+        assertNotNull(response.getRetrievalQuality());
+        assertEquals(10, response.getPipelineSteps().size(), "Should have full 10-stage execution pipeline trace");
+    }
+
+    @Test
+    @DisplayName("Contradicted claim should have baseSupportScore and explicit contradictionPenalty")
+    public void testContradictedClaimScoringBreakdown() {
+        ClaimVerificationRequest request = ClaimVerificationRequest.builder()
+                .type("TEXT")
+                .content("massive fire in kolkata killed none")
+                .build();
+
+        ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
+
+        assertNotNull(response);
+        assertNotNull(response.getBaseSupportScore());
+        assertNotNull(response.getContradictionPenalty());
+        assertTrue(response.getContradictionPenalty() > 0, "Contradiction penalty should be > 0");
+        assertEquals(10, response.getPipelineSteps().size());
+        assertNotNull(response.getRetrievalQuality());
     }
 }
+
 

@@ -200,6 +200,24 @@ export default function ImageHeatmap({ imageAnalysis, uploadedImage }) {
               <span className="font-medium text-slate-200">{exifStatus}</span>
             </div>
             <div className="flex items-center justify-between pt-1 border-t border-slate-800">
+              <span className="text-slate-400">Context Authenticity:</span>
+              <span className={`font-semibold ${
+                imageAnalysis.contextualAuthenticity === 'ORIGINAL_FOUND' ? 'text-emerald-400' :
+                imageAnalysis.contextualAuthenticity === 'MISLEADING_CONTEXT' ? 'text-rose-400' : 'text-slate-200'
+              }`}>
+                {(imageAnalysis.contextualAuthenticity || 'UNVERIFIED_CONTEXT').replace(/_/g, ' ')}
+              </span>
+            </div>
+            <div className="flex items-center justify-between pt-1 border-t border-slate-800">
+              <span className="text-slate-400">AI Generation Indicator:</span>
+              <span className={`font-semibold ${
+                imageAnalysis.aiGenerationIndicator === 'HIGH' ? 'text-amber-400' :
+                imageAnalysis.aiGenerationIndicator === 'LOW' ? 'text-emerald-400' : 'text-slate-300'
+              }`}>
+                {imageAnalysis.aiGenerationIndicator || 'INCONCLUSIVE'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between pt-1 border-t border-slate-800">
               <span className="text-slate-400">Compression Profile:</span>
               <span className="font-medium text-slate-200">{compressionAssessment}</span>
             </div>
@@ -217,27 +235,27 @@ export default function ImageHeatmap({ imageAnalysis, uploadedImage }) {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Cpu className="w-4 h-4 text-sky-400" />
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-300">OCR Quality Assessment</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-300">OCR & Claim Confidence Gate</span>
               </div>
               {getQualityBadge(ocrQualityLevel)}
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
               <div className="p-2 rounded bg-slate-950/60 border border-slate-800 text-center">
-                <span className="text-[10px] text-slate-400 block uppercase">Confidence</span>
-                <span className="text-sm font-mono font-bold text-sky-400">{ocrConfidence}%</span>
+                <span className="text-[10px] text-slate-400 block uppercase">Text Confidence</span>
+                <span className="text-sm font-mono font-bold text-sky-400">{imageAnalysis.ocrTextConfidence || ocrConfidence}%</span>
               </div>
               <div className="p-2 rounded bg-slate-950/60 border border-slate-800 text-center">
-                <span className="text-[10px] text-slate-400 block uppercase">Consistency</span>
-                <span className="text-sm font-mono font-bold text-cyan-400">{imageAnalysis.ocrConsistency || 'HIGH'}</span>
+                <span className="text-[10px] text-slate-400 block uppercase">Claim Confidence</span>
+                <span className="text-sm font-mono font-bold text-purple-400">{imageAnalysis.centralClaimConfidence != null ? `${imageAnalysis.centralClaimConfidence}%` : 'N/A'}</span>
               </div>
               <div className="p-2 rounded bg-slate-950/60 border border-slate-800 text-center">
                 <span className="text-[10px] text-slate-400 block uppercase">Valid Words</span>
                 <span className="text-sm font-mono font-bold text-emerald-400">{validWordRatio}%</span>
               </div>
               <div className="p-2 rounded bg-slate-950/60 border border-slate-800 text-center">
-                <span className="text-[10px] text-slate-400 block uppercase">Noise Ratio</span>
-                <span className="text-sm font-mono font-bold text-amber-400">{garbageCharacterRatio}%</span>
+                <span className="text-[10px] text-slate-400 block uppercase">Noise Scrubbed</span>
+                <span className="text-sm font-mono font-bold text-amber-400">{imageAnalysis.ocrNoiseTokensRemoved || 0} tokens</span>
               </div>
             </div>
           </div>

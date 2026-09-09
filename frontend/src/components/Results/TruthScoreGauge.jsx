@@ -8,17 +8,19 @@ export default function TruthScoreGauge({ score, verdict, badgeColor }) {
   const displayScore = score != null ? score : 50;
   const strokeDashoffset = circumference - (displayScore / 100) * circumference;
 
+  const isAmbiguous = verdict?.includes('AMBIGUOUS');
   const isNonVerifiable = score == null || 
     verdict === 'NON-VERIFIABLE INPUT' || 
     verdict === 'NO VERIFIABLE CLAIM' || 
     verdict === 'OCR INSUFFICIENT' || 
     verdict?.includes('NON-VERIFIABLE') || 
-    verdict?.includes('INSUFFICIENT');
+    verdict?.includes('NO CLAIM DETECTED') ||
+    isAmbiguous;
 
   if (isNonVerifiable && score == null) {
     const isOcrInsufficient = verdict === 'OCR INSUFFICIENT';
-    const isNoClaim = verdict === 'NO VERIFIABLE CLAIM';
-    const color = badgeColor || (isOcrInsufficient ? '#D97706' : '#94A3B8');
+    const isNoClaim = verdict === 'NO VERIFIABLE CLAIM' || verdict === 'NO CLAIM DETECTED';
+    const color = badgeColor || (isAmbiguous ? '#94A3B8' : (isOcrInsufficient ? '#D97706' : '#94A3B8'));
 
     return (
       <div className="text-center p-3 d-flex flex-column align-items-center justify-content-center h-100">
@@ -31,21 +33,23 @@ export default function TruthScoreGauge({ score, verdict, badgeColor }) {
             border: `2px dashed ${color}`
           }}
         >
-          <i className={`bi ${isOcrInsufficient ? 'bi-file-earmark-x-fill' : 'bi-question-diamond-fill'} fs-1`} style={{ color }}></i>
+          <i className={`bi ${isAmbiguous ? 'bi-shield-exclamation' : (isOcrInsufficient ? 'bi-file-earmark-x-fill' : 'bi-question-diamond-fill')} fs-1`} style={{ color }}></i>
         </div>
 
         <span
-          className="badge px-3 py-1.5 fs-6 rounded-pill fw-bold text-uppercase mb-2"
+          className="badge px-3 py-1.5 fs-6 rounded-pill fw-bold text-uppercase mb-2 text-wrap"
           style={{ backgroundColor: `${color}25`, color, border: `1px solid ${color}` }}
         >
           <i className="bi bi-info-circle me-1"></i> {verdict || 'Non-Verifiable Input'}
         </span>
         <p className="small text-muted mb-0" style={{ fontSize: '0.825rem' }}>
-          {isNoClaim ? 
+          {isAmbiguous ?
+            "Non-declarative social post. Disambiguate target above. Score: N/A." :
+           (isNoClaim ? 
             "Image lacks a declarative factual assertion. Genuineness Score: N/A." :
            (isOcrInsufficient ? 
             "OCR quality insufficient for automated verification. Score: N/A." : 
-            "No declarative factual assertion detected. Score: N/A.")}
+            "No declarative factual assertion detected. Score: N/A."))}
         </p>
       </div>
     );

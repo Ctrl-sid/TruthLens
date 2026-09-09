@@ -269,6 +269,51 @@ export default function ExplainabilityCard({ result }) {
           )}
         </div>
 
+        {/* Base Support Score & Contradiction Penalty Breakdown */}
+        {((result.baseSupportScore != null && result.contradictionPenalty != null) || (explainability.baseSupportScore != null && explainability.contradictionPenalty != null)) && (
+          <div className="mt-4 p-4 rounded-xl bg-slate-950/70 border border-slate-700/60 shadow-lg space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+              <div className="flex items-center gap-2">
+                <Scale className="w-4 h-4 text-emerald-400" />
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                  Normalized Evidence Scoring & Contradiction Penalty Model
+                </span>
+              </div>
+              <span className="text-xs font-mono font-bold text-sky-400">
+                Formula: Final = max(0, min(100, Base - Penalty))
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800 text-center">
+                <span className="text-[11px] uppercase font-bold text-slate-400 block mb-1">Base Support Score</span>
+                <span className="text-xl font-mono font-bold text-sky-400">
+                  {result.baseSupportScore != null ? result.baseSupportScore : explainability.baseSupportScore}/100
+                </span>
+                <span className="text-[10px] text-slate-500 block mt-0.5">7-Feature Normalized Synthesis</span>
+              </div>
+
+              <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800 text-center">
+                <span className="text-[11px] uppercase font-bold text-slate-400 block mb-1">Contradiction Penalty</span>
+                <span className={`text-xl font-mono font-bold ${(result.contradictionPenalty || explainability.contradictionPenalty || 0) > 0 ? 'text-rose-400' : 'text-slate-400'}`}>
+                  -{(result.contradictionPenalty != null ? result.contradictionPenalty : explainability.contradictionPenalty) || 0} pts
+                </span>
+                <span className="text-[10px] text-slate-500 block mt-0.5">
+                  Severity: {severity.replace(/_/g, ' ')}
+                </span>
+              </div>
+
+              <div className="p-3 rounded-lg bg-emerald-950/20 border border-emerald-500/30 text-center">
+                <span className="text-[11px] uppercase font-bold text-emerald-400 block mb-1">Final Support Score</span>
+                <span className="text-xl font-mono font-bold text-emerald-300">
+                  {(result.supportScore != null ? result.supportScore : explainability.finalSupportScore) != null ? `${result.supportScore || explainability.finalSupportScore}/100` : 'N/A'}
+                </span>
+                <span className="text-[10px] text-emerald-400/80 block mt-0.5">Epistemic Evidence Rating</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 2. Structured Corroboration & Discrepancy Checklists */}
         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="p-4 rounded-xl bg-slate-950/50 border border-emerald-500/20 space-y-2.5">
@@ -326,7 +371,72 @@ export default function ExplainabilityCard({ result }) {
         )}
       </div>
 
-      {/* 4. Evidence Retrieval Audit Trail */}
+      {/* 4. Retrieval Quality Diagnostics Panel (Spec #36) */}
+      {(result.retrievalQuality || explainability.retrievalQuality) && (
+        <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-700/60 shadow-xl backdrop-blur-md space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-700/50">
+            <h4 className="text-sm font-bold text-white flex items-center gap-2">
+              <Search className="w-4 h-4 text-cyan-400" />
+              Retrieval Quality & Coverage Diagnostics
+            </h4>
+            <span className="text-xs font-mono text-cyan-400">
+              Query Quality: {(result.retrievalQuality || explainability.retrievalQuality).queryQuality || 'HIGH'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+            <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800 text-center">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Regional Coverage</span>
+              <span className={`text-sm font-bold block ${
+                (result.retrievalQuality || explainability.retrievalQuality).regionalCoverage === 'HIGH' ? 'text-emerald-400' :
+                (result.retrievalQuality || explainability.retrievalQuality).regionalCoverage === 'MEDIUM' ? 'text-sky-400' : 'text-slate-400'
+              }`}>
+                {(result.retrievalQuality || explainability.retrievalQuality).regionalCoverage || 'NONE'}
+              </span>
+            </div>
+
+            <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800 text-center">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Source Diversity</span>
+              <span className="text-sm font-bold text-purple-400 block">
+                {(result.retrievalQuality || explainability.retrievalQuality).sourceDiversity || 'MEDIUM'}
+              </span>
+            </div>
+
+            <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800 text-center">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Search Completeness</span>
+              <span className="text-sm font-bold text-emerald-400 block">
+                {(result.retrievalQuality || explainability.retrievalQuality).searchCompleteness || 'HIGH'}
+              </span>
+            </div>
+
+            <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800 text-center">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Sources Searched</span>
+              <span className="text-sm font-mono font-bold text-white block">
+                {(result.retrievalQuality || explainability.retrievalQuality).sourcesSearchedCount || audit.sourcesRetrieved || 0}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-slate-400">
+            <span className="flex items-center gap-1">
+              <span className={`w-2 h-2 rounded-full ${(result.retrievalQuality || explainability.retrievalQuality).officialSourcesSearched ? 'bg-emerald-400' : 'bg-slate-600'}`}></span>
+              Official Authorities Searched
+            </span>
+            <span>•</span>
+            <span className="flex items-center gap-1">
+              <span className={`w-2 h-2 rounded-full ${(result.retrievalQuality || explainability.retrievalQuality).regionSpecificSourcesSearched ? 'bg-emerald-400' : 'bg-slate-600'}`}></span>
+              Regional Sources Included
+            </span>
+            <span>•</span>
+            <span className="flex items-center gap-1">
+              <span className={`w-2 h-2 rounded-full ${(result.retrievalQuality || explainability.retrievalQuality).internationalSourcesSearched ? 'bg-emerald-400' : 'bg-slate-600'}`}></span>
+              International Wires
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* 5. Evidence Retrieval Audit Trail */}
       {audit.sourcesRetrieved > 0 && (
         <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-700/60 shadow-xl backdrop-blur-md space-y-3">
           <div className="flex items-center justify-between pb-2 border-b border-slate-700/50">

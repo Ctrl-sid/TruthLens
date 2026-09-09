@@ -233,6 +233,16 @@ function AppContent() {
                         verdictBadgeColor={result.verdictBadgeColor}
                         verdict={result.verdict}
                         genuinenessScore={result.genuinenessScore}
+                        explicitClaimText={result.explicitClaimText}
+                        inferredContext={result.inferredContext}
+                        visualContextDescription={result.visualContextDescription}
+                        claimDisambiguationOptions={result.claimDisambiguationOptions}
+                        baseSupportScore={result.baseSupportScore}
+                        contradictionPenalty={result.contradictionPenalty}
+                        supportScore={result.supportScore}
+                        onDisambiguate={(optionText) => {
+                          handleVerify('TEXT', optionText);
+                        }}
                         onOpenFeedback={() => {
                           if (!user) setShowAuthModal(true);
                           else setShowFeedbackModal(true);

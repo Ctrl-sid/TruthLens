@@ -16,9 +16,16 @@ public class ClaimVerificationResponse {
     private Long id;
     private String inputType;
     private String claimSummary;
+    private String explicitClaimText; // Exact extracted or typed text (e.g. Call to action / prayer)
+    private String inferredContext; // Implied event (e.g. Disaster/Flooding in North Carolina & Tennessee)
+    private String visualContextDescription; // Description of embedded photo (e.g. child and dog in flood water)
+    @Builder.Default
+    private List<String> claimDisambiguationOptions = new ArrayList<>(); // e.g. ["Verify Underlying Event", "Verify Photo Context", "Verify Account"]
     private Integer genuinenessScore; // Nullable for NOT_VERIFIABLE (rendered as N/A), 0 to 100 otherwise
     private Integer supportScore; // Explicit alias for Evidence Support Score (0 to 100)
-    private String verdict; // VERIFIED / STRONGLY SUPPORTED, MOSTLY SUPPORTED, PARTIALLY SUPPORTED, MIXED / CONFLICTING EVIDENCE, INSUFFICIENT EVIDENCE, DEVELOPING EVENT, OUTDATED / SUPERSEDED, CONTRADICTED, STRONGLY CONTRADICTED, NON-VERIFIABLE INPUT
+    private Integer baseSupportScore; // Unpenalized evidence score
+    private Integer contradictionPenalty; // Penalty points deducted for contradictions
+    private String verdict; // VERIFIED / STRONGLY SUPPORTED, MOSTLY SUPPORTED, PARTIALLY SUPPORTED, MIXED / CONFLICTING EVIDENCE, INSUFFICIENT EVIDENCE, DEVELOPING EVENT, OUTDATED / SUPERSEDED, CONTRADICTED, STRONGLY CONTRADICTED, NON-VERIFIABLE INPUT, AMBIGUOUS SOCIAL POST
     private String verdictBadgeColor; // #10B981, #F59E0B, #94A3B8, #EF4444, #64748B
     private String confidence; // HIGH, MEDIUM, LOW
     private Integer confidenceScore; // 0 to 100%
@@ -26,11 +33,12 @@ public class ClaimVerificationResponse {
     private String asOfStatus; // SUPPORTED_AT_CLAIM_TIME, CURRENTLY_VALID, OUTDATED_SUPERSEDED, UNVERIFIED
     private String distortionType; // NUMERICAL_DISTORTION, LOCATION_DISTORTION, ENTITY_DISTORTION, ATTRIBUTION_DISTORTION, POLARITY_DISTORTION, CONTEXT_DISTORTION, OMISSION_DISTORTION, NONE
     private String contradictionSeverity; // NONE, MINOR_DISCREPANCY, MODERATE_CONTRADICTION, MAJOR_CONTRADICTION, DIRECT_FACTUAL_REVERSAL
-    private String failureState; // NONE, OCR_FAILED, URL_UNREACHABLE, NO_RELEVANT_EVIDENCE, INSUFFICIENT_EVIDENCE, SOURCE_CONFLICT, VERIFICATION_TIMEOUT
+    private String failureState; // NONE, OCR_FAILED, URL_UNREACHABLE, NO_RELEVANT_EVIDENCE, INSUFFICIENT_EVIDENCE, SOURCE_CONFLICT, VERIFICATION_TIMEOUT, RETRIEVAL_FAILED, AMBIGUOUS_CLAIM
     private String rationale;
     private List<String> keyReasons;
     private ClaimContextInfo claimContext;
     private RetrievalAudit retrievalAudit;
+    private RetrievalQuality retrievalQuality;
     @Builder.Default
     private List<DecomposedClaim> subClaims = new ArrayList<>();
     @Builder.Default
@@ -46,9 +54,28 @@ public class ClaimVerificationResponse {
     private ImageIntegrityAnalysis imageAnalysis; // Null if not image input
     private String timestamp;
     @Builder.Default
-    private String algorithmVersion = "2.3";
+    private String algorithmVersion = "2.4";
     @Builder.Default
-    private String scoringVersion = "2.3";
+    private String scoringVersion = "2.4";
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class RetrievalQuality {
+        private String queryQuality; // HIGH, MEDIUM, LOW
+        private String regionalCoverage; // HIGH, MEDIUM, LOW, NONE
+        private String sourceDiversity; // HIGH, MEDIUM, LOW
+        private String sourceAccessibility; // HIGH, MEDIUM, LOW
+        private String semanticRetrieval; // HIGH, MEDIUM, LOW
+        private String searchCompleteness; // HIGH, MEDIUM, LOW, FAILED
+        private int sourcesSearchedCount;
+        private int relevantSourcesFound;
+        private int sourcesInaccessibleCount;
+        private boolean regionSpecificSourcesSearched;
+        private boolean internationalSourcesSearched;
+        private boolean officialSourcesSearched;
+    }
 
     @Data
     @NoArgsConstructor
@@ -149,6 +176,9 @@ public class ClaimVerificationResponse {
         private String confidenceLevel; // HIGH, MEDIUM, LOW
         private Integer confidenceScore; // 0 to 100%
         private Integer evidenceCompleteness; // 0 to 100%
+        private Integer baseSupportScore; // Unpenalized evidence score
+        private Integer contradictionPenalty; // Penalty deducted for contradictions
+        private Integer finalSupportScore; // Final score
         private String asOfStatus; // SUPPORTED_AT_CLAIM_TIME, CURRENTLY_VALID, OUTDATED_SUPERSEDED
         private String distortionType; // NUMERICAL_DISTORTION, LOCATION_DISTORTION, etc.
         @Builder.Default
@@ -160,6 +190,7 @@ public class ClaimVerificationResponse {
         @Builder.Default
         private List<EvidenceItemSummary> evidenceMatrix = new ArrayList<>();
         private RetrievalAudit retrievalAudit;
+        private RetrievalQuality retrievalQuality;
     }
 
     @Data
@@ -168,7 +199,7 @@ public class ClaimVerificationResponse {
     @Builder
     public static class EvidenceItemSummary {
         private String sourceName;
-        private String sourceType; // Level 1 Primary Gov, Level 2 News Wire, Level 3 Fact Check, Level 4 Reference, Level 5 Social
+        private String sourceType; // OFFICIAL_PRIMARY, OFFICIAL_SECONDARY, REPUTABLE_NEWS_LOCAL, REPUTABLE_NEWS_NATIONAL, INTERNATIONAL_NEWS, FACT_CHECKER, REFERENCE_DATABASE, USER_GENERATED, SOCIAL_MEDIA, UNKNOWN
         private String evidenceTier; // LEVEL_1_PRIMARY to LEVEL_5_USER_GENERATED
         private String stance; // SUPPORTED, CONFIRMED, ARTICLE_REPORTS_CLAIM, REFUTED, DENIED, NOT_MENTIONED, UNCERTAIN
         private String reliability; // HIGH, MEDIUM, LOW
@@ -226,8 +257,16 @@ public class ClaimVerificationResponse {
     public static class SourceEvidence {
         private String sourceName;
         private String domain;
+        private String sourceType; // OFFICIAL_PRIMARY, OFFICIAL_SECONDARY, REPUTABLE_NEWS_LOCAL, REPUTABLE_NEWS_NATIONAL, INTERNATIONAL_NEWS, FACT_CHECKER, REFERENCE_DATABASE, USER_GENERATED, SOCIAL_MEDIA, UNKNOWN
         private String evidenceTier; // LEVEL_1_PRIMARY, LEVEL_2_SECONDARY, LEVEL_3_FACTCHECK, LEVEL_4_REFERENCE, LEVEL_5_USER_GENERATED
         private int credibilityRating;
+        private double sourceAuthority; // 0.00 to 1.00
+        private double geographicRelevanceScore; // 0.00 to 1.00
+        private double eventRelevanceScore; // 0.00 to 1.00
+        private double temporalRelevanceScore; // 0.00 to 1.00
+        private double directnessScore; // 0.00 to 1.00
+        private double independenceScore; // 0.00 to 1.00
+        private double freshnessScore; // 0.00 to 1.00
         private double matchPercentage;
         private double independenceRating; // 0 to 100%
         private double contextualAuthorityScore; // 0.0 to 1.0
@@ -248,15 +287,25 @@ public class ClaimVerificationResponse {
     @AllArgsConstructor
     @Builder
     public static class ImageIntegrityAnalysis {
-        private String imageContentType; // NEWS_SCREENSHOT, SOCIAL_MEDIA_SCREENSHOT, NEWSPAPER_CLIPPING, NEWS_BANNER, ARTICLE_SCREENSHOT, INFOGRAPHIC, MEME, PHOTOGRAPH, ILLUSTRATION, DOCUMENT, UNKNOWN
+        private String imageContentType; // NEWS_SCREENSHOT, SOCIAL_MEDIA_POST, NEWSPAPER_CLIPPING, NEWS_BANNER, ARTICLE_SCREENSHOT, INFOGRAPHIC, MEME_GRAPHIC, PHOTOGRAPH, ILLUSTRATION, DOCUMENT, UNKNOWN
+        private String detectedImageType; // System detected type
+        private String userSelectedImageType; // User specified type
         private String textPresence; // TEXT_PRESENT, TEXT_ABSENT, TEXT_UNCERTAIN
         private String rawOcrText; // Exact raw OCR string
         private String normalizedOcrText; // Whitespace & punctuation normalized
         private String reconstructedClaim; // Entity-resolved claim proposition
+        private String explicitClaimText; // Extracted direct text
+        private String inferredContext; // Implied event or disaster
+        private String socialAccountText; // Account handle / username
+        private String socialPostText; // Main post message
+        private String accountAuthenticity; // CONFIRMED, UNVERIFIED, UNKNOWN
         private String detectedHeadlineText; // Backwards compatible alias for reconstructedClaim or normalized text
-        private String claimVerificationBasis; // RAW_OCR, NORMALIZED_OCR, RECONSTRUCTED_CLAIM, USER_CORRECTED_OCR
+        private String claimVerificationBasis; // RAW_OCR, NORMALIZED_OCR, RECONSTRUCTED_CLAIM, USER_CORRECTED_OCR, SOCIAL_POST_CONTEXT
         
         private Double ocrConfidence; // 0.0 to 100.0%
+        private Double ocrTextConfidence; // 0.0 to 100.0%
+        private Double centralClaimConfidence; // 0.0 to 100.0%
+        private Integer ocrNoiseTokensRemoved; // Count of garbage tokens scrubbed
         private String ocrQualityLevel; // HIGH, MEDIUM, LOW, UNRELIABLE
         private String ocrConsistency; // HIGH, MEDIUM, LOW, N/A
         @Builder.Default
@@ -266,7 +315,7 @@ public class ClaimVerificationResponse {
         private Double validWordRatio; // 0.0 to 100.0%
         private Double entityConfidence; // 0.0 to 100.0%
         
-        private String claimExtractionStatus; // CLAIM_READY_FOR_VERIFICATION, NO_TEXT_DETECTED, OCR_INSUFFICIENT, CLAIM_EXTRACTION_FAILED, NON_VERIFIABLE_CLAIM
+        private String claimExtractionStatus; // CLAIM_READY_FOR_VERIFICATION, NO_TEXT_DETECTED, OCR_INSUFFICIENT, CLAIM_EXTRACTION_FAILED, NON_VERIFIABLE_CLAIM, AMBIGUOUS_SOCIAL_POST
         private boolean requiresUserReview;
 
         // Decoupled Image Forensics
@@ -274,6 +323,9 @@ public class ClaimVerificationResponse {
         private String forensicAssessment; // NO_SIGNIFICANT_ANOMALY, MINOR_ANOMALIES, ANOMALIES_DETECTED, STRONG_FORENSIC_CONCERNS, INCONCLUSIVE
         private String manipulationVerdict; // Human readable summary of forensic assessment
         private String imageContextStatus; // "Context Matches Claim", "Misleading / Repurposed Visual Context Likely", "Unverified Context"
+        private String visualContextDescription; // Description of embedded photo / visual scene
+        private String contextualAuthenticity; // ORIGINAL_FOUND, OLDER_VERSION_FOUND, DUPLICATE_FOUND, SIMILAR_IMAGE_FOUND, UNVERIFIED_CONTEXT, MISLEADING_CONTEXT
+        private String aiGenerationIndicator; // LOW, MEDIUM, HIGH, INCONCLUSIVE
         private String exifStatus; // "Sensor Metadata Available", "Stripped by Platform (Neutral)", "Edited Metadata"
         private String compressionAssessment; // "NORMAL", "ANOMALIES_DETECTED"
         private String pixelAnomalyAssessment; // "NOT_DETECTED", "POSSIBLE_ANOMALIES"

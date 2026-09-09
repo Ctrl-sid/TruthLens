@@ -42,11 +42,13 @@ public class OcrAnalysisService {
             claimBasis = "NONE";
         }
 
-        // 2. Normalize OCR Text
-        String normalizedOcr = normalizeOcrText(rawOcr);
+        // 2. Scrub OCR Noise Spans and Normalize OCR Text
+        OcrScrubResult scrubResult = scrubOcrNoise(rawOcr);
+        String normalizedOcr = scrubResult.cleanedText;
+        int noiseTokensScrubbed = scrubResult.removedTokensCount;
 
-        // 3. Assess OCR Quality & Garbage Ratios on both raw and normalized text
-        OcrQualityMetrics metrics = calculateOcrQualityMetrics(rawOcr.length() > 0 ? rawOcr : normalizedOcr);
+        // 3. Assess OCR Quality & Garbage Ratios on scrubbed and normalized text
+        OcrQualityMetrics metrics = calculateOcrQualityMetrics(normalizedOcr.length() > 0 ? normalizedOcr : rawOcr);
 
         // 4. Detect Text Presence
         String textPresence = detectTextPresence(rawOcr, metrics);
@@ -54,45 +56,58 @@ public class OcrAnalysisService {
         // 5. Calculate Claim Likelihood
         double claimLikelihood = calculateClaimLikelihood(normalizedOcr.isBlank() ? rawOcr : normalizedOcr, metrics);
 
-        // 6. Classify Image Content Type
-        String imageContentType = classifyImageContentType(imageContent, rawOcr, textPresence);
+        // 6. Classify Image Content Type Automatically
+        String detectedImageType = classifyImageContentType(imageContent, rawOcr, textPresence);
+        String imageContentType = detectedImageType;
 
-        // 7. Claim Extraction & Reconstruction Gate
-        // NEVER reconstruct or accept claim if OCR is UNRELIABLE or claimLikelihood < 50%
+        // 7. Social Media Post & Non-Declarative Prayer/Appeal Detection
+        boolean isSocialPost = detectedImageType.equals("SOCIAL_MEDIA_POST");
+        SocialPostDecomposition socialDecomp = parseSocialPostContext(rawOcr, normalizedOcr);
+
+        // 8. Claim Extraction & Reconstruction Gate
         ReconstructedClaimResult reconResult = reconstructClaim(normalizedOcr, rawOcr);
         String reconstructedClaim = "";
         double reconConfidence = 0.0;
+        double centralClaimConf = 0.0;
+        String explicitClaim = rawOcr;
+        String inferredContext = null;
 
         boolean isReliableClaim = (metrics.qualityLevel.equals("HIGH") || metrics.qualityLevel.equals("MEDIUM") || userOverrode)
                 && (claimLikelihood >= 40.0 || reconResult.confidence >= 80.0)
                 && metrics.validWordRatio >= 35.0
                 && metrics.garbageRatio <= 25.0;
 
-        if (isReliableClaim) {
+        String claimExtractionStatus;
+
+        if (textPresence.equals("TEXT_ABSENT") || imageContentType.equals("PHOTOGRAPH") || imageContentType.equals("ILLUSTRATION")) {
+            claimExtractionStatus = "NO_TEXT_DETECTED";
+            centralClaimConf = 0.0;
+        } else if (metrics.qualityLevel.equals("UNRELIABLE") && !userOverrode) {
+            claimExtractionStatus = "OCR_UNRELIABLE";
+            centralClaimConf = 15.0;
+        } else if (socialDecomp.isNonDeclarativeAppeal && !userOverrode) {
+            // E.g. "Please keep North Carolina and Tennessee in your prayers..."
+            claimExtractionStatus = "AMBIGUOUS_SOCIAL_POST";
+            explicitClaim = socialDecomp.explicitPostText;
+            inferredContext = socialDecomp.inferredDisasterContext;
+            centralClaimConf = 35.0; // Ambiguous: no explicit factual proposition
+            claimBasis = "SOCIAL_POST_CONTEXT";
+        } else if (!isReliableClaim && !userOverrode) {
+            claimExtractionStatus = "NO_CLAIM_DETECTED";
+            centralClaimConf = 25.0;
+        } else {
+            claimExtractionStatus = "CLAIM_READY_FOR_VERIFICATION";
             reconstructedClaim = reconResult.reconstructedText;
             reconConfidence = reconResult.confidence;
+            centralClaimConf = reconConfidence > 0 ? reconConfidence : Math.min(95.0, metrics.overallConfidence + 10.0);
             if (!userOverrode) {
                 claimBasis = reconConfidence > 80.0 ? "RECONSTRUCTED_CLAIM" : "NORMALIZED_OCR";
             }
-        } else {
-            claimBasis = "NONE";
-        }
-
-        // 8. Determine Claim Extraction Status
-        String claimExtractionStatus;
-        if (textPresence.equals("TEXT_ABSENT") || imageContentType.equals("PHOTOGRAPH") || imageContentType.equals("ILLUSTRATION")) {
-            claimExtractionStatus = "NO_TEXT_DETECTED";
-        } else if (!isReliableClaim || metrics.qualityLevel.equals("UNRELIABLE")) {
-            claimExtractionStatus = "OCR_UNRELIABLE";
-        } else if (rawOcr.length() < 10 || claimLikelihood < 40.0) {
-            claimExtractionStatus = "NO_CLAIM_DETECTED";
-        } else {
-            claimExtractionStatus = "CLAIM_READY_FOR_VERIFICATION";
         }
 
         boolean requiresUserReview = !claimExtractionStatus.equals("CLAIM_READY_FOR_VERIFICATION");
 
-        // 9. Decoupled Image Forensics
+        // 9. Decoupled Image Forensics & AI Detection
         boolean isDataUrl = imageContent != null && imageContent.startsWith("data:image");
         double forensicAnomalyScore = 12.0;
 
@@ -117,10 +132,17 @@ public class OcrAnalysisService {
         String exifStatus = isDataUrl ? "Sensor Metadata Available" : "Stripped by Platform (Neutral)";
         String compressionAssessment = forensicAnomalyScore > 50.0 ? "ANOMALIES_DETECTED" : "NORMAL";
         String pixelAnomalyAssessment = forensicAnomalyScore > 60.0 ? "POSSIBLE_ANOMALIES" : "NOT_DETECTED";
+        String aiGenerationIndicator = "INCONCLUSIVE";
+        String contextualAuthenticity = "UNVERIFIED_CONTEXT";
 
-        String detectedHeadline = isReliableClaim ? 
-                (!reconstructedClaim.isBlank() ? reconstructedClaim : normalizedOcr) : 
-                "No verifiable news claim detected in image";
+        String detectedHeadline;
+        if (claimExtractionStatus.equals("AMBIGUOUS_SOCIAL_POST")) {
+            detectedHeadline = explicitClaim;
+        } else if (isReliableClaim) {
+            detectedHeadline = !reconstructedClaim.isBlank() ? reconstructedClaim : normalizedOcr;
+        } else {
+            detectedHeadline = "No verifiable news claim detected in image";
+        }
 
         String overlayUrl = (imageContent != null && (imageContent.startsWith("data:image") || imageContent.startsWith("http"))) 
                 ? imageContent 
@@ -139,13 +161,24 @@ public class OcrAnalysisService {
 
         return ImageIntegrityAnalysis.builder()
                 .imageContentType(imageContentType)
+                .detectedImageType(detectedImageType)
+                .userSelectedImageType(imageContentType)
                 .textPresence(textPresence)
                 .rawOcrText(rawOcr)
                 .normalizedOcrText(normalizedOcr)
                 .reconstructedClaim(reconstructedClaim)
+                .explicitClaimText(explicitClaim)
+                .inferredContext(inferredContext)
+                .visualContextDescription(isSocialPost ? "Embedded photograph depicting potential emergency scene" : (textPresence.equals("TEXT_PRESENT") ? "Visual graphics and layout elements" : "Standalone photograph"))
+                .socialAccountText(socialDecomp.accountText)
+                .socialPostText(socialDecomp.explicitPostText)
+                .accountAuthenticity("UNVERIFIED")
                 .detectedHeadlineText(detectedHeadline)
                 .claimVerificationBasis(claimBasis)
                 .ocrConfidence(metrics.overallConfidence)
+                .ocrTextConfidence(metrics.overallConfidence)
+                .centralClaimConfidence(centralClaimConf)
+                .ocrNoiseTokensRemoved(noiseTokensScrubbed)
                 .ocrQualityLevel(metrics.qualityLevel)
                 .ocrConsistency(ocrConsistency)
                 .ocrMultiPassCount(3)
@@ -158,11 +191,13 @@ public class OcrAnalysisService {
                 .manipulationProbability(forensicAnomalyScore)
                 .forensicAssessment(forensicAssessment)
                 .manipulationVerdict(manipulationVerdict)
-                .imageContextStatus("Context Matches Claim Topic")
+                .imageContextStatus(inferredContext != null ? "Implied Disaster Context" : "Context Matches Claim Topic")
+                .contextualAuthenticity(contextualAuthenticity)
+                .aiGenerationIndicator(aiGenerationIndicator)
                 .exifStatus(exifStatus)
                 .compressionAssessment(compressionAssessment)
                 .pixelAnomalyAssessment(pixelAnomalyAssessment)
-                .forensicDisclaimer("Forensic indicators do not independently establish that an image has been manipulated.")
+                .forensicDisclaimer("Forensic indicators do not independently establish that an image has been manipulated. Metadata stripping is common across social networks.")
                 .anomalyFlags(anomalyFlags)
                 .heatmapOverlayUrl(overlayUrl)
                 .build();
@@ -246,12 +281,13 @@ public class OcrAnalysisService {
 
         for (String t : tokens) {
             if (t.length() < 2) continue;
-            if (COMMON_VALID_WORDS.contains(t)) {
+            if (isValidWordToken(t)) {
                 validWordCount++;
             }
             if (t.equals("djokovic") || t.equals("djokoic") || t.equals("navone") || t.equals("navc") ||
                 t.equals("nepal") || t.equals("india") || t.equals("nasa") || t.equals("kolkata") ||
-                t.equals("bangladeshi") || t.equals("isro") || t.equals("modi") || t.equals("who")) {
+                t.equals("bangladeshi") || t.equals("isro") || t.equals("modi") || t.equals("who") ||
+                t.equals("carolina") || t.equals("tennessee")) {
                 entityMentions++;
             }
         }
@@ -277,6 +313,109 @@ public class OcrAnalysisService {
         }
 
         return metrics;
+    }
+
+    // ==========================================
+    // OCR Noise Scrubbing
+    // ==========================================
+    public static class OcrScrubResult {
+        public String cleanedText;
+        public int removedTokensCount;
+        public OcrScrubResult(String cleanedText, int removedTokensCount) {
+            this.cleanedText = cleanedText;
+            this.removedTokensCount = removedTokensCount;
+        }
+    }
+
+    public OcrScrubResult scrubOcrNoise(String rawText) {
+        if (rawText == null || rawText.isBlank()) {
+            return new OcrScrubResult("", 0);
+        }
+        String[] tokens = rawText.split("\\s+");
+        List<String> validTokens = new ArrayList<>();
+        int removed = 0;
+
+        for (String t : tokens) {
+            String clean = t.replaceAll("[^a-zA-Z0-9@#.,!?:;'\"]", "").trim();
+            if (clean.isBlank()) {
+                removed++;
+                continue;
+            }
+            if (clean.length() <= 2 && !isCommonShortWord(clean.toLowerCase())) {
+                removed++;
+                continue;
+            }
+            validTokens.add(clean);
+        }
+
+        String cleaned = String.join(" ", validTokens).replaceAll("\\s+", " ").trim();
+        return new OcrScrubResult(cleaned, removed);
+    }
+
+    private boolean isCommonShortWord(String word) {
+        return Set.of("in", "on", "at", "to", "of", "is", "it", "he", "we", "us", "no", "by", "as", "or", "an", "if", "so", "my", "up", "do", "go", "me", "pm", "am").contains(word);
+    }
+
+    private boolean isValidWordToken(String token) {
+        if (token == null || token.length() < 2) return false;
+        if (COMMON_VALID_WORDS.contains(token)) return true;
+        if (token.matches("^[a-z]{2,25}$") && token.matches(".*[aeiouy].*")) {
+            return !token.matches(".*[bcdfghjklmnpqrstvwxz]{5,}.*");
+        }
+        return false;
+    }
+
+    // ==========================================
+    // Social Post Context Parsing
+    // ==========================================
+    public static class SocialPostDecomposition {
+        public boolean isNonDeclarativeAppeal;
+        public String accountText;
+        public String explicitPostText;
+        public String inferredDisasterContext;
+    }
+
+    public SocialPostDecomposition parseSocialPostContext(String raw, String normalized) {
+        SocialPostDecomposition decomp = new SocialPostDecomposition();
+        String text = (normalized != null && !normalized.isBlank()) ? normalized : raw;
+        if (text == null) {
+            decomp.isNonDeclarativeAppeal = false;
+            return decomp;
+        }
+
+        String lower = text.toLowerCase();
+        boolean hasPrayerOrAppeal = lower.contains("prayer") || lower.contains("prayers") || lower.contains("pray") 
+                || lower.contains("keep in your prayers") || lower.contains("god bless") || lower.contains("pray for");
+        boolean hasRhetorical = lower.contains("world needs god") || lower.contains("don't act like") || lower.contains("amen");
+        boolean hasReligiousVerse = lower.contains("matthew") || lower.contains("psalm") || lower.contains("john 3") || lower.contains("verse");
+
+        if (hasPrayerOrAppeal || (hasRhetorical && hasReligiousVerse)) {
+            decomp.isNonDeclarativeAppeal = true;
+            decomp.explicitPostText = text;
+
+            List<String> locs = new ArrayList<>();
+            if (lower.contains("north carolina")) locs.add("North Carolina");
+            if (lower.contains("tennessee")) locs.add("Tennessee");
+            if (lower.contains("kerala")) locs.add("Kerala");
+            if (lower.contains("nepal")) locs.add("Nepal");
+            if (lower.contains("florida")) locs.add("Florida");
+            if (lower.contains("texas")) locs.add("Texas");
+
+            if (!locs.isEmpty()) {
+                decomp.inferredDisasterContext = "Post references emergency/disaster context affecting " + String.join(" and ", locs);
+            } else {
+                decomp.inferredDisasterContext = "Post contains non-declarative prayer/call to action without explicit factual assertions.";
+            }
+
+            if (lower.contains("@") || lower.contains("val thor") || lower.contains("cmdr")) {
+                decomp.accountText = "Social User / Handle Mentioned";
+            }
+        } else {
+            decomp.isNonDeclarativeAppeal = false;
+            decomp.explicitPostText = text;
+        }
+
+        return decomp;
     }
 
     // ==========================================
@@ -341,24 +480,27 @@ public class OcrAnalysisService {
     }
 
     // ==========================================
-    // Image Content Type Classification
+    // Image Content Type Classification (Automatic)
     // ==========================================
     public String classifyImageContentType(String imageContent, String text, String textPresence) {
         if (textPresence.equals("TEXT_ABSENT") || text == null || text.isBlank() || text.length() < 8) {
             return "PHOTOGRAPH";
         }
         String lower = text.toLowerCase();
-        if (lower.contains("instagram") || lower.contains("twitter") || lower.contains("facebook") || lower.contains("post") || lower.contains("tweet")) {
-            return "SOCIAL_MEDIA_SCREENSHOT";
+        if (lower.contains("@") || lower.contains("prayers") || lower.contains("prayer") || lower.contains("pray for") 
+                || lower.contains("instagram") || lower.contains("twitter") || lower.contains("facebook") || lower.contains("post") 
+                || lower.contains("tweet") || lower.contains("retweet") || lower.contains("repost") || lower.contains("shares") 
+                || lower.contains("followers") || lower.contains("x.com") || lower.contains("threads")) {
+            return "SOCIAL_MEDIA_POST";
         }
         if (lower.contains("the hindu") || lower.contains("times of india") || lower.contains("express") || lower.contains("clipping") || lower.contains("edition")) {
             return "NEWSPAPER_CLIPPING";
         }
-        if (lower.contains("breaking news") || lower.contains("live update") || lower.contains("alert")) {
+        if (lower.contains("breaking news") || lower.contains("live update") || lower.contains("alert") || lower.contains("reuters") || lower.contains("associated press")) {
             return "NEWS_BANNER";
         }
         if (lower.contains("meme") || lower.contains("lol") || lower.contains("fun")) {
-            return "MEME";
+            return "MEME_GRAPHIC";
         }
         return "NEWS_SCREENSHOT";
     }
