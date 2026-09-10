@@ -13,6 +13,9 @@ export default function RationaleCard({
   baseSupportScore,
   contradictionPenalty,
   supportScore,
+  suggestedAction,
+  stopReason,
+  pipelineStatus,
   onDisambiguate,
   onOpenFeedback 
 }) {
@@ -25,6 +28,25 @@ export default function RationaleCard({
     verdict?.includes('NO VERIFIABLE') ||
     isAmbiguousSocialPost;
 
+  const getDynamicHeader = () => {
+    if (isAmbiguousSocialPost) {
+      return "Social Post: Ambiguous Context & Target Disambiguation";
+    }
+    if (verdict?.includes('INSUFFICIENT')) {
+      return "Why is there insufficient evidence?";
+    }
+    if (verdict === 'NON-VERIFIABLE IMAGE' || verdict === 'OCR UNRELIABLE') {
+      return "Why was verification blocked?";
+    }
+    if (verdict === 'NO CLAIM DETECTED' || verdict === 'NO VERIFIABLE CLAIM') {
+      return "No verifiable claim detected";
+    }
+    if (isNonClaim) {
+      return "Why can't this input be verified?";
+    }
+    return "Why is this claim supported or contradicted?";
+  };
+
   return (
     <div className="h-100 d-flex flex-column justify-content-between">
       <div>
@@ -32,9 +54,7 @@ export default function RationaleCard({
           <h5 className="fw-bold text-white mb-0 d-flex align-items-center gap-2">
             <i className={`bi ${isAmbiguousSocialPost ? 'bi-shield-exclamation text-warning' : (isNonClaim ? 'bi-question-circle text-warning' : 'bi-file-earmark-text text-cyan')}`}></i>
             <span>
-              {isAmbiguousSocialPost 
-                ? "Social Post: Ambiguous Context & Target Disambiguation"
-                : (isNonClaim ? "Why can't this image/input be verified?" : "Why is this News Genuine or Fake?")}
+              {getDynamicHeader()}
             </span>
           </h5>
 
@@ -49,6 +69,32 @@ export default function RationaleCard({
             </button>
           )}
         </div>
+
+        {/* Verification Stop Reason if Blocked */}
+        {stopReason && isNonClaim && (
+          <div className="bg-rose-950 bg-opacity-30 rounded-3 p-3 border border-rose-500 border-opacity-30 mb-3">
+            <div className="small fw-bold text-rose-300 mb-1 d-flex align-items-center gap-1.5">
+              <i className="bi bi-shield-slash-fill text-rose-400"></i>
+              <span>Verification Stop Reason</span>
+            </div>
+            <p className="text-slate-300 text-xs mb-0 font-monospace">
+              {stopReason}
+            </p>
+          </div>
+        )}
+
+        {/* Suggested Next Action */}
+        {suggestedAction && (
+          <div className="bg-sky-950 bg-opacity-40 rounded-3 p-3 border border-cyan border-opacity-30 mb-3">
+            <div className="small fw-bold text-cyan mb-1 d-flex align-items-center gap-1.5">
+              <i className="bi bi-lightbulb-fill text-warning"></i>
+              <span>Suggested Next Step</span>
+            </div>
+            <p className="text-light opacity-90 text-xs mb-0">
+              {suggestedAction}
+            </p>
+          </div>
+        )}
 
         {/* Explicit vs Inferred vs Visual Context Card */}
         {(explicitClaimText || inferredContext || visualContextDescription) && (

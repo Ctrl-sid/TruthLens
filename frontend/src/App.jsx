@@ -240,6 +240,9 @@ function AppContent() {
                         baseSupportScore={result.baseSupportScore}
                         contradictionPenalty={result.contradictionPenalty}
                         supportScore={result.supportScore}
+                        suggestedAction={result.suggestedAction}
+                        stopReason={result.stopReason}
+                        pipelineStatus={result.pipelineStatus}
                         onDisambiguate={(optionText) => {
                           handleVerify('TEXT', optionText);
                         }}

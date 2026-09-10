@@ -184,6 +184,7 @@ export default function ExplainabilityCard({ result }) {
               {pipelineSteps.map((step, idx) => {
                 const isCompleted = step.status === 'COMPLETED' || step.status === 'PASSED';
                 const isBlocked = step.status === 'BLOCKED';
+                const isNotExecuted = step.status === 'NOT_EXECUTED';
                 const isSkipped = step.status === 'SKIPPED';
 
                 return (
@@ -192,7 +193,7 @@ export default function ExplainabilityCard({ result }) {
                     className={`p-2.5 rounded-lg border transition-all ${
                       isBlocked 
                         ? 'bg-rose-950/30 border-rose-500/40 text-rose-200' 
-                        : isSkipped 
+                        : (isSkipped || isNotExecuted)
                         ? 'bg-slate-900/30 border-slate-800/80 text-slate-500' 
                         : isCompleted 
                         ? 'bg-emerald-950/20 border-emerald-500/30 text-slate-200' 
@@ -205,11 +206,12 @@ export default function ExplainabilityCard({ result }) {
                       </span>
                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
                         isBlocked ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' :
+                        isNotExecuted ? 'bg-slate-800/60 text-slate-500 border border-slate-700' :
                         isSkipped ? 'bg-slate-800 text-slate-500 border border-slate-700' :
                         isCompleted ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
                         'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
                       }`}>
-                        {isBlocked ? '✗ BLOCKED' : isSkipped ? '⏸ SKIPPED' : isCompleted ? '✓ PASSED' : step.status}
+                        {isBlocked ? '✗ BLOCKED' : isNotExecuted ? '⛔ NOT EXECUTED' : isSkipped ? '⏸ SKIPPED' : isCompleted ? '✓ PASSED' : step.status}
                       </span>
                     </div>
                     <div className="text-xs font-semibold text-white truncate">{step.stepName}</div>

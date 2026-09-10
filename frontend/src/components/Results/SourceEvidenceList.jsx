@@ -60,8 +60,18 @@ export default function SourceEvidenceList({ sources }) {
           >
             <div className="space-y-1.5 flex-1 min-w-0 pr-2">
               <div className="flex flex-wrap items-center gap-2">
+                {src.evidenceId && (
+                  <span className="px-2 py-0.5 text-xs font-mono font-bold rounded bg-slate-800 text-cyan-400 border border-cyan-500/30">
+                    {src.evidenceId}
+                  </span>
+                )}
                 <span className="font-bold text-white text-sm">{src.sourceName}</span>
                 {getTierBadge(src.evidenceTier)}
+                {src.evidenceStatus && src.evidenceStatus !== 'RELEVANT_SUPPORT' && (
+                  <span className="px-2 py-0.5 text-xs font-mono font-semibold rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    {src.evidenceStatus}
+                  </span>
+                )}
                 <span className="px-2 py-0.5 text-xs font-mono font-semibold rounded bg-sky-500/10 text-sky-300 border border-sky-500/20">
                   Credibility: {src.credibilityRating}/100
                 </span>
