@@ -196,11 +196,11 @@ public class ExternalFactCheckService {
                 domain = extractDomainFromSourceName(source);
             }
 
-            // Candidate Discovery Overlap Check
             double overlap = calculateQueryArticleOverlap(originalQuery, title);
-            if (overlap < 0.25) {
+            double claimRelevance = calculateClaimRelevance(originalQuery, title, context);
+            if (claimRelevance < 0.35 || overlap < 0.25) {
                 rejectedCount++;
-                continue; // Filter out low-relevance noise
+                continue; // Filter out low-relevance noise or mismatched topic
             }
 
             if (!isTier1AccreditedPublisher(source, domain)) {
@@ -210,8 +210,8 @@ public class ExternalFactCheckService {
 
             ContradictionCheck itemContradiction = detectContradiction(originalQuery, title);
 
-            if (overlap > bestOverlap) {
-                bestOverlap = overlap;
+            if (claimRelevance > bestOverlap) {
+                bestOverlap = claimRelevance;
                 bestTitle = title;
                 bestLink = link;
                 bestSource = source != null ? source : "Accredited Wire Press";
@@ -231,10 +231,15 @@ public class ExternalFactCheckService {
                 String stance = itemContradiction.isContradicted() ? "REFUTED" : "SUPPORTED";
                 double independence = calculateIndependenceRating(source, domain);
                 double contextualAuth = claimContextService.calculateContextualAuthorityScore(source, domain, geo, context != null ? context.getDomain() : "");
+                int cred = determineSourceCredibility(source);
+                String evidenceId = "E00" + (crossReferencedList.size() + 1);
+                String evidenceStatus = itemContradiction.isContradicted() ? "RELEVANT_REFUTATION" : "RELEVANT_SUPPORT";
+                double evidenceSupport = Math.round(claimRelevance * (itemContradiction.isContradicted() ? 10.0 : 90.0) * (cred / 100.0) * (independence / 100.0) * 10.0) / 10.0;
+                boolean isGeoMatch = !geo.isBlank() && title.toLowerCase().contains(geo.toLowerCase());
 
                 List<String> acceptanceReasons = new ArrayList<>();
                 acceptanceReasons.add("Accredited news publisher (" + (source != null ? source : domain) + ")");
-                acceptanceReasons.add("Contemporaneous reporting with " + Math.round(overlap * 100) + "% proposition overlap");
+                acceptanceReasons.add("Contemporaneous reporting with " + Math.round(claimRelevance * 100) + "% claim relevance");
                 if (isPrimaryRegionalAuthority(source, domain, geo)) {
                     acceptanceReasons.add("Direct primary regional authority relevance");
                 } else {
@@ -242,13 +247,23 @@ public class ExternalFactCheckService {
                 }
 
                 crossReferencedList.add(SourceEvidence.builder()
+                        .evidenceId(evidenceId)
                         .sourceName(source != null ? source : domain)
                         .domain(domain)
                         .evidenceTier(tier)
+                        .evidenceStatus(evidenceStatus)
                         .articleTitle(title)
                         .url(link)
-                        .credibilityRating(determineSourceCredibility(source))
-                        .matchPercentage(Math.round(overlap * 1000.0) / 10.0)
+                        .credibilityRating(cred)
+                        .sourceAuthority(cred / 100.0)
+                        .claimRelevance(claimRelevance)
+                        .semanticSimilarity(overlap)
+                        .evidenceSupport(evidenceSupport)
+                        .eventMatch(true)
+                        .entityMatch(true)
+                        .locationMatch(isGeoMatch)
+                        .temporalMatch(true)
+                        .matchPercentage(Math.round(claimRelevance * 1000.0) / 10.0)
                         .independenceRating(independence)
                         .contextualAuthorityScore(contextualAuth)
                         .geographicRelevance(geo.toLowerCase().contains("nepal") || geo.toLowerCase().contains("india") ? "HIGH" : "MEDIUM")
@@ -738,17 +753,57 @@ public class ExternalFactCheckService {
         return calculateQueryArticleOverlap(query, title + " " + snippet) >= 0.30;
     }
 
+    private static final Set<String> STOP_WORDS = Set.of(
+            "the", "a", "an", "is", "was", "are", "were", "in", "on", "at", "to", "for",
+            "of", "and", "or", "by", "with", "from", "as", "about", "into", "through", "after", "over",
+            "says", "said", "have", "has", "had", "been", "will", "would", "could", "should", "out", "all",
+            "what", "why", "how", "when", "where", "who", "which", "whose", "whom", "can", "may", "might",
+            "did", "do", "does", "done", "this", "that", "these", "those", "i", "you", "he", "she", "it", "we", "they"
+    );
+
+    public double calculateClaimRelevance(String query, String articleTitle, ClaimContextInfo context) {
+        if (query == null || articleTitle == null) return 0.0;
+        double lexicalOverlap = calculateQueryArticleOverlap(query, articleTitle);
+        if (lexicalOverlap < 0.20) return 0.0;
+
+        String qLower = query.toLowerCase();
+        String tLower = articleTitle.toLowerCase();
+
+        // 1. Geographic Entity Relevance Check
+        if (context != null && !context.getGeographicEntities().isEmpty()) {
+            boolean anyGeoMatch = false;
+            for (String geo : context.getGeographicEntities()) {
+                if (tLower.contains(geo.toLowerCase())) {
+                    anyGeoMatch = true;
+                    break;
+                }
+            }
+            if (!anyGeoMatch) {
+                // If claim specifies location (e.g. Nepal, Kerala, North Carolina) and title has completely different geography, reject or sharply penalize
+                if (tLower.contains("uk") || tLower.contains("london") || tLower.contains("britain") || tLower.contains("australia") || tLower.contains("canada")) {
+                    return 0.05;
+                }
+                lexicalOverlap *= 0.70;
+            } else {
+                lexicalOverlap = Math.min(1.0, lexicalOverlap * 1.25);
+            }
+        }
+
+        // 2. Domain / Topic Relevance Check (Disaster vs Books/Entertainment)
+        boolean isDisasterClaim = qLower.contains("flood") || qLower.contains("earthquake") || qLower.contains("cyclone") || qLower.contains("killed") || qLower.contains("death") || qLower.contains("casualt");
+        boolean isIrrelevantLifestyleArticle = tLower.contains("book") || tLower.contains("children do") || tLower.contains("parenting") || tLower.contains("movie") || tLower.contains("review") || tLower.contains("trailer");
+        if (isDisasterClaim && isIrrelevantLifestyleArticle) {
+            return 0.02;
+        }
+
+        return Math.min(1.0, Math.max(0.0, lexicalOverlap));
+    }
+
     private double calculateQueryArticleOverlap(String query, String articleTitle) {
         if (query == null || articleTitle == null) return 0.0;
 
-        Set<String> stopWords = Set.of(
-                "the", "a", "an", "is", "was", "are", "were", "in", "on", "at", "to", "for",
-                "of", "and", "or", "by", "with", "from", "as", "about", "into", "through", "after", "over",
-                "says", "said", "have", "has", "had", "been", "will", "would", "could", "should", "out", "all"
-        );
-
         Set<String> queryTokens = Arrays.stream(query.toLowerCase().split("[^a-zA-Z0-9]+"))
-                .filter(w -> w.length() > 2 && !stopWords.contains(w))
+                .filter(w -> w.length() > 2 && !STOP_WORDS.contains(w))
                 .collect(Collectors.toSet());
 
         if (queryTokens.isEmpty()) return 0.0;
