@@ -9,6 +9,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -68,7 +69,7 @@ public class FactCheckEngineServiceTest {
     }
 
     @Test
-    @DisplayName("Question with embedded factual proposition should extract claim and verify")
+    @DisplayName("Question with question word should return NON-VERIFIABLE INPUT with null score (N/A)")
     public void testFactualQuestionExtraction() {
         ClaimVerificationRequest request = ClaimVerificationRequest.builder()
                 .type("TEXT")
@@ -78,9 +79,11 @@ public class FactCheckEngineServiceTest {
         ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
 
         assertNotNull(response);
-        assertFalse(response.getVerdict().contains("NON-VERIFIABLE"), "Factual question should extract proposition and verify!");
-        assertNotNull(response.getClaimContext());
-        assertTrue(response.getClaimContext().getGeographicEntities().contains("Nepal") || response.getClaimContext().getGeographicEntities().contains("India"));
+        assertTrue(response.getVerdict().contains("NON-VERIFIABLE"));
+        assertNull(response.getGenuinenessScore(), "Question must receive null score (N/A)");
+        assertNull(response.getSupportScore());
+        assertEquals("BLOCKED", response.getPipelineStatus());
+        assertEquals("QUESTION", response.getInputType());
     }
 
     @Test
@@ -557,6 +560,109 @@ public class FactCheckEngineServiceTest {
         assertTrue(response.getContradictionPenalty() > 0, "Contradiction penalty should be > 0");
         assertEquals(10, response.getPipelineSteps().size());
         assertNotNull(response.getRetrievalQuality());
+    }
+
+    @Test
+    @DisplayName("TEST 01 / TEST A: 'what should i do' MUST return NON-VERIFIABLE INPUT with Score=N/A and 0 searches")
+    public void testRegression01WhatShouldIDo() {
+        ClaimVerificationRequest request = ClaimVerificationRequest.builder()
+                .type("TEXT")
+                .content("what should i do")
+                .build();
+
+        ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
+
+        assertNotNull(response);
+        assertEquals("NON-VERIFIABLE INPUT", response.getVerdict());
+        assertNull(response.getGenuinenessScore(), "Score must be null (rendered as N/A)");
+        assertNull(response.getSupportScore(), "Support score must be null (rendered as N/A)");
+        assertEquals("N/A", response.getConfidence());
+        assertNull(response.getConfidenceScore());
+        assertEquals("BLOCKED", response.getPipelineStatus());
+        assertEquals(false, response.getClaimDetected());
+        assertEquals(false, response.getVerifiable());
+        assertTrue(response.getSources().isEmpty(), "Evidence sources must be empty");
+        assertEquals(10, response.getPipelineSteps().size());
+        assertEquals("NOT_EXECUTED", response.getPipelineSteps().get(4).getStatus()); // Stage 05 Evidence Retrieval
+    }
+
+    @Test
+    @DisplayName("TEST 02 / TEST B: 'why is the sky blue?' and 'Is the Earth round?' MUST classify as QUESTION and block verification")
+    public void testRegression02QuestionDetection() {
+        ClaimVerificationRequest request1 = ClaimVerificationRequest.builder()
+                .type("TEXT")
+                .content("why is the sky blue?")
+                .build();
+        ClaimVerificationResponse response1 = factCheckEngineService.verifyClaim(request1);
+        assertEquals("NON-VERIFIABLE INPUT", response1.getVerdict());
+        assertEquals("BLOCKED", response1.getPipelineStatus());
+        assertNull(response1.getGenuinenessScore());
+
+        ClaimVerificationRequest request2 = ClaimVerificationRequest.builder()
+                .type("TEXT")
+                .content("Is the Earth round?")
+                .build();
+        ClaimVerificationResponse response2 = factCheckEngineService.verifyClaim(request2);
+        assertEquals("NON-VERIFIABLE INPUT", response2.getVerdict());
+        assertEquals("BLOCKED", response2.getPipelineStatus());
+        assertNull(response2.getGenuinenessScore());
+    }
+
+    @Test
+    @DisplayName("TEST 03 / TEST D: 'I think this news is terrible.' MUST classify as OPINION and block verification")
+    public void testRegression03OpinionDetection() {
+        ClaimVerificationRequest request = ClaimVerificationRequest.builder()
+                .type("TEXT")
+                .content("I think this news is terrible.")
+                .build();
+
+        ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
+
+        assertNotNull(response);
+        assertEquals("NON-VERIFIABLE INPUT", response.getVerdict());
+        assertEquals("BLOCKED", response.getPipelineStatus());
+        assertEquals("OPINION", response.getInputType());
+        assertNull(response.getGenuinenessScore());
+        assertNull(response.getSupportScore());
+    }
+
+    @Test
+    @DisplayName("TEST 04 / TEST C / TEST E: Declarative claims MUST allow verification")
+    public void testRegression04FactualClaimsAllowed() {
+        ClaimVerificationRequest request1 = ClaimVerificationRequest.builder()
+                .type("TEXT")
+                .content("The Earth is round.")
+                .build();
+        ClaimVerificationResponse response1 = factCheckEngineService.verifyClaim(request1);
+        assertEquals("COMPLETED", response1.getPipelineStatus());
+        assertTrue(response1.getClaimDetected());
+
+        ClaimVerificationRequest request2 = ClaimVerificationRequest.builder()
+                .type("TEXT")
+                .content("The government announced a new policy on Monday.")
+                .build();
+        ClaimVerificationResponse response2 = factCheckEngineService.verifyClaim(request2);
+        assertEquals("COMPLETED", response2.getPipelineStatus());
+        assertTrue(response2.getClaimDetected());
+    }
+
+    @Test
+    @DisplayName("TEST 06: Evidence Relevance Admission Gate must reject semantically mismatched articles")
+    public void testRegression06EvidenceRelevanceGate() {
+        ExternalFactCheckService service = new ExternalFactCheckService();
+        ClaimVerificationResponse.ClaimContextInfo context = ClaimVerificationResponse.ClaimContextInfo.builder()
+                .geographicEntities(List.of("North Carolina", "Tennessee"))
+                .domain("Disaster Relief")
+                .build();
+
+        // Irrelevant lifestyle book review with high lexical overlap on generic words
+        double relevance = service.calculateClaimRelevance(
+                "Flooding disaster in North Carolina and Tennessee killed residents",
+                "What Should My Children Do? by Daniel Susskind - A Book Review in London",
+                context
+        );
+
+        assertTrue(relevance < 0.35, "Irrelevant article must be rejected by relevance gate, got: " + relevance);
     }
 }
 
