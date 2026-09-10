@@ -14,7 +14,15 @@ import java.util.List;
 @Builder
 public class ClaimVerificationResponse {
     private Long id;
-    private String inputType;
+    private String inputType; // e.g. "FACTUAL_CLAIM", "QUESTION", "OPINION", "REQUEST", "IMAGE", "URL"
+    private String originalClaim; // Immutable user-provided claim or OCR text
+    private String claimSource; // "USER_INPUT", "OCR_EXTRACTED_USER_IMAGE", "URL_ARTICLE_CONTENT"
+    private Boolean claimDetected; // True if a factual claim proposition exists
+    private Boolean verifiable; // True if input can proceed to verification
+    private String pipelineStatus; // "COMPLETED", "BLOCKED", "PARTIALLY_COMPLETED", "FAILED", "INSUFFICIENT_DATA"
+    private String blockedAt; // Name of pipeline stage if blocked
+    private String stopReason; // Reason why pipeline stopped
+    private String suggestedAction; // Guidance/next action for user
     private String claimSummary;
     private String explicitClaimText; // Exact extracted or typed text (e.g. Call to action / prayer)
     private String inferredContext; // Implied event (e.g. Disaster/Flooding in North Carolina & Tennessee)
@@ -22,13 +30,13 @@ public class ClaimVerificationResponse {
     @Builder.Default
     private List<String> claimDisambiguationOptions = new ArrayList<>(); // e.g. ["Verify Underlying Event", "Verify Photo Context", "Verify Account"]
     private Integer genuinenessScore; // Nullable for NOT_VERIFIABLE (rendered as N/A), 0 to 100 otherwise
-    private Integer supportScore; // Explicit alias for Evidence Support Score (0 to 100)
+    private Integer supportScore; // Explicit alias for Evidence Support Score (0 to 100, null for N/A)
     private Integer baseSupportScore; // Unpenalized evidence score
     private Integer contradictionPenalty; // Penalty points deducted for contradictions
     private String verdict; // VERIFIED / STRONGLY SUPPORTED, MOSTLY SUPPORTED, PARTIALLY SUPPORTED, MIXED / CONFLICTING EVIDENCE, INSUFFICIENT EVIDENCE, DEVELOPING EVENT, OUTDATED / SUPERSEDED, CONTRADICTED, STRONGLY CONTRADICTED, NON-VERIFIABLE INPUT, AMBIGUOUS SOCIAL POST
     private String verdictBadgeColor; // #10B981, #F59E0B, #94A3B8, #EF4444, #64748B
-    private String confidence; // HIGH, MEDIUM, LOW
-    private Integer confidenceScore; // 0 to 100%
+    private String confidence; // HIGH, MEDIUM, LOW, N/A
+    private Integer confidenceScore; // 0 to 100% (null for N/A)
     private Integer evidenceCompleteness; // 0 to 100% (e.g. 3/4 verified sub-claims = 75%)
     private String asOfStatus; // SUPPORTED_AT_CLAIM_TIME, CURRENTLY_VALID, OUTDATED_SUPERSEDED, UNVERIFIED
     private String distortionType; // NUMERICAL_DISTORTION, LOCATION_DISTORTION, ENTITY_DISTORTION, ATTRIBUTION_DISTORTION, POLARITY_DISTORTION, CONTEXT_DISTORTION, OMISSION_DISTORTION, NONE
@@ -54,9 +62,9 @@ public class ClaimVerificationResponse {
     private ImageIntegrityAnalysis imageAnalysis; // Null if not image input
     private String timestamp;
     @Builder.Default
-    private String algorithmVersion = "2.4";
+    private String algorithmVersion = "3.0";
     @Builder.Default
-    private String scoringVersion = "2.4";
+    private String scoringVersion = "3.0";
 
     @Data
     @NoArgsConstructor
@@ -83,8 +91,8 @@ public class ClaimVerificationResponse {
     @Builder
     public static class PipelineStep {
         private String stepNumber; // e.g. "01", "02"
-        private String stepName; // e.g. "Input Validation", "OCR Quality Gate"
-        private String status; // PASSED, COMPLETED, BLOCKED, SKIPPED, WARNING
+        private String stepName; // e.g. "Input Ingestion", "Input Classification", "Claim Extraction"
+        private String status; // PASSED, COMPLETED, BLOCKED, SKIPPED, NOT_EXECUTED, WARNING
         private String detail;
     }
 
@@ -173,7 +181,7 @@ public class ClaimVerificationResponse {
     @AllArgsConstructor
     @Builder
     public static class ExplainabilityProfile {
-        private String confidenceLevel; // HIGH, MEDIUM, LOW
+        private String confidenceLevel; // HIGH, MEDIUM, LOW, N/A
         private Integer confidenceScore; // 0 to 100%
         private Integer evidenceCompleteness; // 0 to 100%
         private Integer baseSupportScore; // Unpenalized evidence score
@@ -255,12 +263,21 @@ public class ClaimVerificationResponse {
     @AllArgsConstructor
     @Builder
     public static class SourceEvidence {
+        private String evidenceId; // e.g. "E001", "E002"
         private String sourceName;
         private String domain;
         private String sourceType; // OFFICIAL_PRIMARY, OFFICIAL_SECONDARY, REPUTABLE_NEWS_LOCAL, REPUTABLE_NEWS_NATIONAL, INTERNATIONAL_NEWS, FACT_CHECKER, REFERENCE_DATABASE, USER_GENERATED, SOCIAL_MEDIA, UNKNOWN
         private String evidenceTier; // LEVEL_1_PRIMARY, LEVEL_2_SECONDARY, LEVEL_3_FACTCHECK, LEVEL_4_REFERENCE, LEVEL_5_USER_GENERATED
+        private String evidenceStatus; // RELEVANT_SUPPORT, RELEVANT_REFUTATION, PARTIAL_RELEVANCE, CONTEXT_ONLY, NOT_RELEVANT
         private int credibilityRating;
         private double sourceAuthority; // 0.00 to 1.00
+        private double claimRelevance; // 0.00 to 1.00 (Entity + Event + Topic alignment)
+        private double semanticSimilarity; // 0.00 to 1.00
+        private double evidenceSupport; // 0.00 to 100.00
+        private boolean eventMatch;
+        private boolean entityMatch;
+        private boolean locationMatch;
+        private boolean temporalMatch;
         private double geographicRelevanceScore; // 0.00 to 1.00
         private double eventRelevanceScore; // 0.00 to 1.00
         private double temporalRelevanceScore; // 0.00 to 1.00
@@ -278,6 +295,7 @@ public class ClaimVerificationResponse {
         private String url;
         private String clusterId;
         private boolean isPrimarySource;
+        private String rejectionReason;
         @Builder.Default
         private List<String> acceptanceReasons = new ArrayList<>();
     }
