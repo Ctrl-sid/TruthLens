@@ -87,7 +87,11 @@ public class FactCheckEngineService {
     }
 
     public ClaimVerificationResponse verifyClaim(ClaimVerificationRequest request) {
-        String contentToAnalyze = request.getContent() != null ? request.getContent().trim() : "";
+        String rawInput = request.getContent() != null ? request.getContent().trim() : "";
+        String contentToAnalyze = rawInput;
+        String originalClaim = rawInput;
+        String claimSource = "IMAGE".equalsIgnoreCase(request.getType()) ? "OCR_EXTRACTED_USER_IMAGE" :
+                ("URL".equalsIgnoreCase(request.getType()) ? "URL_ARTICLE_CONTENT" : "USER_INPUT");
         ClaimVerificationResponse.ImageIntegrityAnalysis imageAnalysis = null;
         String detectedDomain = null;
 
@@ -113,6 +117,14 @@ public class FactCheckEngineService {
                 return ClaimVerificationResponse.builder()
                         .id(claimId)
                         .inputType("IMAGE")
+                        .originalClaim(rawInput)
+                        .claimSource("OCR_EXTRACTED_USER_IMAGE")
+                        .claimDetected(false)
+                        .verifiable(false)
+                        .pipelineStatus("BLOCKED")
+                        .blockedAt("Stage 04 — Verifiability Gate")
+                        .stopReason("Ambiguous Social Media Post: Non-declarative appeal/prayer without explicit factual assertion.")
+                        .suggestedAction("Select an option below to verify the event, photo, or post specifically.")
                         .claimSummary("Social Media Post: Ambiguous Context Detected")
                         .explicitClaimText(imageAnalysis.getExplicitClaimText())
                         .inferredContext(imageAnalysis.getInferredContext())
@@ -151,8 +163,8 @@ public class FactCheckEngineService {
                         .nlpAnalysis(nlpResults)
                         .imageAnalysis(imageAnalysis)
                         .timestamp(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
-                        .algorithmVersion("2.4")
-                        .scoringVersion("2.4")
+                        .algorithmVersion("3.0")
+                        .scoringVersion("3.0")
                         .build();
             }
 
@@ -173,6 +185,14 @@ public class FactCheckEngineService {
                 return ClaimVerificationResponse.builder()
                         .id(claimId)
                         .inputType("IMAGE")
+                        .originalClaim(rawInput)
+                        .claimSource("OCR_EXTRACTED_USER_IMAGE")
+                        .claimDetected(false)
+                        .verifiable(false)
+                        .pipelineStatus("BLOCKED")
+                        .blockedAt("Stage 03 — Claim Extraction & OCR Gate")
+                        .stopReason("OCR confidence is too low to safely extract a claim without hallucination.")
+                        .suggestedAction("Upload a clearer image with legible news text or enter the headline manually.")
                         .claimSummary("Non-Verifiable Image: No News Claim Detected")
                         .explicitClaimText(imageAnalysis.getExplicitClaimText())
                         .inferredContext(imageAnalysis.getInferredContext())
@@ -182,8 +202,8 @@ public class FactCheckEngineService {
                         .contradictionPenalty(null)
                         .verdict(verdictText)
                         .verdictBadgeColor("#64748B")
-                        .confidence("HIGH")
-                        .confidenceScore(95)
+                        .confidence("N/A")
+                        .confidenceScore(null)
                         .evidenceCompleteness(0)
                         .asOfStatus("UNVERIFIED")
                         .distortionType("NONE")
@@ -204,8 +224,8 @@ public class FactCheckEngineService {
                         .nlpAnalysis(nlpResults)
                         .imageAnalysis(imageAnalysis)
                         .timestamp(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
-                        .algorithmVersion("2.4")
-                        .scoringVersion("2.4")
+                        .algorithmVersion("3.0")
+                        .scoringVersion("3.0")
                         .build();
             }
 
@@ -221,34 +241,43 @@ public class FactCheckEngineService {
             detectedDomain = extractDomainFromUrl(contentToAnalyze);
         }
 
-        // 2. Pre-Check: Validate Claim Verifiability / Check-Worthiness & Question Claim Extraction
+        // 2. Pre-Check: Validate Claim Verifiability / Check-Worthiness & Input Classification Gate
+        // STRICT ANTI-HALLUCINATION RULE: Questions, opinions, and requests NEVER execute search or receive truth scores.
         ClaimVerifiabilityValidator.ValidationResult validation = claimVerifiabilityValidator.validateClaimVerifiability(contentToAnalyze);
         if (!validation.isVerifiableClaim()) {
             NlpAnalysisResponse nlpResults = nlpPipelineService.processText(contentToAnalyze);
             long claimId = System.currentTimeMillis();
-            String inputTypeStr = request.getType() != null ? request.getType().toUpperCase() : "TEXT";
+            String inputTypeStr = validation.getInputType() != null ? validation.getInputType().name() : (request.getType() != null ? request.getType().toUpperCase() : "TEXT");
             List<PipelineStep> steps = buildPipelineSteps(inputTypeStr, imageAnalysis, validation, List.of(), List.of(), "NON-VERIFIABLE INPUT", true);
             RetrievalQuality rQuality = buildRetrievalQuality(0, 0);
 
             return ClaimVerificationResponse.builder()
                     .id(claimId)
                     .inputType(inputTypeStr)
+                    .originalClaim(originalClaim)
+                    .claimSource(claimSource)
+                    .claimDetected(false)
+                    .verifiable(false)
+                    .pipelineStatus("BLOCKED")
+                    .blockedAt("Stage 04 — Verifiability Gate")
+                    .stopReason("The submitted input is classified as " + inputTypeStr + ". " + validation.getRejectionReason() + ".")
+                    .suggestedAction(validation.getSuggestedAction())
                     .claimSummary("Non-Verifiable Input: '" + (contentToAnalyze.length() > 50 ? contentToAnalyze.substring(0, 47) + "..." : contentToAnalyze) + "'")
                     .explicitClaimText(contentToAnalyze)
                     .genuinenessScore(null) // Unassigned / N/A
-                    .supportScore(null)
+                    .supportScore(null) // Unassigned / N/A
                     .baseSupportScore(null)
                     .contradictionPenalty(null)
                     .verdict("NON-VERIFIABLE INPUT")
                     .verdictBadgeColor("#64748B")
-                    .confidence("HIGH")
-                    .confidenceScore(95)
+                    .confidence("N/A")
+                    .confidenceScore(null)
                     .evidenceCompleteness(0)
                     .asOfStatus("UNVERIFIED")
                     .distortionType("NONE")
                     .contradictionSeverity("NONE")
                     .failureState("NONE")
-                    .rationale("The submitted text does not constitute a declarative news claim with verifiable factual assertions. " + validation.getRejectionReason() + ".")
+                    .rationale("The submitted text is classified as " + inputTypeStr + " and does not constitute a declarative news claim with verifiable factual assertions. " + validation.getRejectionReason() + ".")
                     .keyReasons(validation.getAdvisoryNotes())
                     .subClaims(List.of())
                     .evidenceClusters(List.of())
@@ -258,12 +287,12 @@ public class FactCheckEngineService {
                     .nlpAnalysis(nlpResults)
                     .imageAnalysis(imageAnalysis)
                     .timestamp(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
-                    .algorithmVersion("2.4")
-                    .scoringVersion("2.4")
+                    .algorithmVersion("3.0")
+                    .scoringVersion("3.0")
                     .build();
         }
 
-        // Use extracted factual claim if question was transformed
+        // Use extracted factual claim if available
         if (validation.getExtractedFactualClaim() != null && !validation.getExtractedFactualClaim().isBlank()) {
             contentToAnalyze = validation.getExtractedFactualClaim();
         }
@@ -374,6 +403,11 @@ public class FactCheckEngineService {
         return ClaimVerificationResponse.builder()
                 .id(resultId)
                 .inputType(finalInputType)
+                .originalClaim(originalClaim)
+                .claimSource(claimSource)
+                .claimDetected(true)
+                .verifiable(true)
+                .pipelineStatus("COMPLETED")
                 .claimSummary(summary)
                 .explicitClaimText(imageAnalysis != null ? imageAnalysis.getExplicitClaimText() : contentToAnalyze)
                 .inferredContext(imageAnalysis != null ? imageAnalysis.getInferredContext() : null)
@@ -406,8 +440,8 @@ public class FactCheckEngineService {
                 .nlpAnalysis(nlpResults)
                 .imageAnalysis(imageAnalysis)
                 .timestamp(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
-                .algorithmVersion("2.4")
-                .scoringVersion("2.4")
+                .algorithmVersion("3.0")
+                .scoringVersion("3.0")
                 .build();
     }
 
@@ -1322,250 +1356,158 @@ public class FactCheckEngineService {
                                                  String verdict, boolean isBlocked) {
         List<PipelineStep> steps = new ArrayList<>();
         
-        // Stage 01: Input Normalization & Sanitization
+        // Stage 01: Input Ingestion & Sanitization
         steps.add(PipelineStep.builder()
                 .stepNumber("01")
-                .stepName("Input Normalization & Sanitization")
+                .stepName("Input Ingestion & Sanitization")
                 .status("COMPLETED")
                 .detail("Modality: " + inputType + " payload ingested, control characters stripped, and input normalized.")
                 .build());
 
-        // Stage 02: Image Type & Modality Classification
-        if ("IMAGE".equalsIgnoreCase(inputType)) {
-            String imgType = img != null && img.getDetectedImageType() != null ? img.getDetectedImageType() : "PHOTOGRAPH";
-            steps.add(PipelineStep.builder()
-                    .stepNumber("02")
-                    .stepName("Image Type & Modality Classification")
-                    .status("COMPLETED")
-                    .detail("Detected format: " + imgType + (img != null && img.getExplicitClaimText() != null ? " with extracted text overlay." : "."))
-                    .build());
+        // Stage 02: Input Classification
+        String inputTypeCategory = val != null && val.getInputType() != null ? val.getInputType().name() : inputType;
+        steps.add(PipelineStep.builder()
+                .stepNumber("02")
+                .stepName("Input Classification")
+                .status("COMPLETED")
+                .detail("Classified input as: " + inputTypeCategory + ".")
+                .build());
 
-            // Stage 03: OCR & Noise Scrubbing Gate
+        // Stage 03: Claim Extraction & OCR Gate
+        if ("IMAGE".equalsIgnoreCase(inputType)) {
             if (img != null && ("UNRELIABLE".equals(img.getOcrQualityLevel()) || "NO_TEXT_DETECTED".equals(img.getClaimExtractionStatus()) || "OCR_UNRELIABLE".equals(img.getClaimExtractionStatus()))) {
                 steps.add(PipelineStep.builder()
                         .stepNumber("03")
-                        .stepName("OCR & Noise Scrubbing Gate")
+                        .stepName("Claim Extraction & OCR Gate")
                         .status("BLOCKED")
-                        .detail("OCR Quality: UNRELIABLE (" + Math.round(img.getValidWordRatio() != null ? img.getValidWordRatio() : 0) + "% valid words). Non-verifiable image.")
+                        .detail("OCR Quality: UNRELIABLE (" + Math.round(img.getValidWordRatio() != null ? img.getValidWordRatio() : 0) + "% valid words). Cannot safely extract claim.")
                         .build());
             } else if ("AMBIGUOUS_SOCIAL_POST".equals(img != null ? img.getClaimExtractionStatus() : null)) {
                 steps.add(PipelineStep.builder()
                         .stepNumber("03")
-                        .stepName("OCR & Noise Scrubbing Gate")
+                        .stepName("Claim Extraction & OCR Gate")
                         .status("PASSED")
-                        .detail("OCR Quality: " + (img != null ? img.getOcrQualityLevel() : "MEDIUM") + " (" + (img != null && img.getOcrNoiseTokensRemoved() != null ? img.getOcrNoiseTokensRemoved() : 0) + " noise tokens scrubbed). Social post identified.")
+                        .detail("OCR Quality: " + (img != null ? img.getOcrQualityLevel() : "MEDIUM") + ". Social media post extracted.")
                         .build());
             } else {
                 steps.add(PipelineStep.builder()
                         .stepNumber("03")
-                        .stepName("OCR & Noise Scrubbing Gate")
+                        .stepName("Claim Extraction & OCR Gate")
                         .status("PASSED")
-                        .detail("OCR Quality: " + (img != null ? img.getOcrQualityLevel() : "HIGH") + " (" + (img != null ? Math.round(img.getValidWordRatio()) : 100) + "% valid words, " + (img != null && img.getOcrNoiseTokensRemoved() != null ? img.getOcrNoiseTokensRemoved() : 0) + " noise tokens scrubbed). Multi-pass consistency verified.")
+                        .detail("OCR Quality: " + (img != null ? img.getOcrQualityLevel() : "HIGH") + " (" + (img != null ? Math.round(img.getValidWordRatio()) : 100) + "% valid words). Proposition extracted.")
                         .build());
             }
-
-            // Stage 04: Visual Forensics & Context Decoupling
-            String forensicState = img != null && img.getManipulationProbability() > 70 ? "WARNING" : "COMPLETED";
-            String forensicDetail = img != null ? 
-                    ("ELA / Compression: " + (img.getForensicAssessment() != null ? img.getForensicAssessment() : "NO_SIGNIFICANT_ANOMALY") + 
-                     " | Context: " + (img.getContextualAuthenticity() != null ? img.getContextualAuthenticity() : "UNVERIFIED_CONTEXT") + 
-                     " | AI Indicator: " + (img.getAiGenerationIndicator() != null ? img.getAiGenerationIndicator() : "LOW"))
-                    : "Digital forensics evaluated.";
-            steps.add(PipelineStep.builder()
-                    .stepNumber("04")
-                    .stepName("Visual Forensics & Context Decoupling")
-                    .status(forensicState)
-                    .detail(forensicDetail)
-                    .build());
         } else {
             steps.add(PipelineStep.builder()
-                    .stepNumber("02")
-                    .stepName("Modality Processing")
-                    .status("COMPLETED")
-                    .detail("Input payload validated: " + inputType + " schema parsed.")
-                    .build());
-            steps.add(PipelineStep.builder()
                     .stepNumber("03")
-                    .stepName("Text Preprocessing & Normalization")
-                    .status("COMPLETED")
-                    .detail("Unicode normalized, punctuation sanitized, entity boundaries detected.")
+                    .stepName("Claim Extraction & Proposition Parsing")
+                    .status(val != null && !val.isClaimDetected() ? "BLOCKED" : "COMPLETED")
+                    .detail(val != null && !val.isClaimDetected() ? "No declarative proposition extracted from non-claim input." : "Extracted declarative factual proposition.")
                     .build());
+        }
+
+        // Stage 04: Verifiability Gate
+        if (isBlocked || (val != null && !val.isVerifiableClaim()) || (img != null && "AMBIGUOUS_SOCIAL_POST".equals(img.getClaimExtractionStatus()))) {
             steps.add(PipelineStep.builder()
                     .stepNumber("04")
-                    .stepName("Modality Decoupling")
+                    .stepName("Verifiability Gate")
+                    .status("BLOCKED")
+                    .detail("Verification Blocked: " + (val != null ? val.getRejectionReason() : (img != null && "AMBIGUOUS_SOCIAL_POST".equals(img.getClaimExtractionStatus()) ? "Ambiguous social post without declarative assertion." : "Non-verifiable input.")))
+                    .build());
+            steps.add(PipelineStep.builder()
+                    .stepNumber("05")
+                    .stepName("Evidence Retrieval")
+                    .status("NOT_EXECUTED")
+                    .detail("Not executed: External search blocked by Verifiability Gate.")
+                    .build());
+            steps.add(PipelineStep.builder()
+                    .stepNumber("06")
+                    .stepName("Evidence Validation & Admission Gate")
+                    .status("NOT_EXECUTED")
+                    .detail("Not executed.")
+                    .build());
+            steps.add(PipelineStep.builder()
+                    .stepNumber("07")
+                    .stepName("Contradiction & Stance Analysis")
+                    .status("NOT_EXECUTED")
+                    .detail("Not executed.")
+                    .build());
+            steps.add(PipelineStep.builder()
+                    .stepNumber("08")
+                    .stepName("Evidence Fusion & Scoring")
+                    .status("NOT_EXECUTED")
+                    .detail("Not executed: Score is N/A.")
+                    .build());
+            steps.add(PipelineStep.builder()
+                    .stepNumber("09")
+                    .stepName("Image Forensics & Modality Decoupling")
+                    .status("IMAGE".equalsIgnoreCase(inputType) ? "COMPLETED" : "NOT_EXECUTED")
+                    .detail("IMAGE".equalsIgnoreCase(inputType) ? "Forensics evaluated independently." : "Decoupled (text input).")
+                    .build());
+            steps.add(PipelineStep.builder()
+                    .stepNumber("10")
+                    .stepName("XAI Report & Provenance Generation")
                     .status("PASSED")
-                    .detail("Text-only modality: visual forensics decoupled.")
-                    .build());
-        }
-
-        // Stage 05: Claim Verifiability & Ambiguity Triage
-        if (img != null && "AMBIGUOUS_SOCIAL_POST".equals(img.getClaimExtractionStatus())) {
-            steps.add(PipelineStep.builder()
-                    .stepNumber("05")
-                    .stepName("Claim Verifiability & Ambiguity Triage")
-                    .status("FLAGGED")
-                    .detail("Ambiguous Social Post: Explicit statement is a non-declarative prayer/appeal. Contextual disambiguation required.")
-                    .build());
-            steps.add(PipelineStep.builder()
-                    .stepNumber("06")
-                    .stepName("Atomic Claim Decomposition")
-                    .status("SKIPPED")
-                    .detail("Skipped: Awaiting user selection on verification target (Event vs Photo vs Account).")
-                    .build());
-            steps.add(PipelineStep.builder()
-                    .stepNumber("07")
-                    .stepName("Tiered Corroboration & Regional Search")
-                    .status("SKIPPED")
-                    .detail("Skipped: Wire query deferred until claim target disambiguation.")
-                    .build());
-            steps.add(PipelineStep.builder()
-                    .stepNumber("08")
-                    .stepName("Anti-Echo Syndication Clustering")
-                    .status("SKIPPED")
-                    .detail("Skipped: No claim clusters formed.")
-                    .build());
-            steps.add(PipelineStep.builder()
-                    .stepNumber("09")
-                    .stepName("Normalized Scoring & Contradiction Penalty")
-                    .status("COMPLETED")
-                    .detail("Evidence Support Score: N/A (unassigned for ambiguous non-declarative posts).")
-                    .build());
-            steps.add(PipelineStep.builder()
-                    .stepNumber("10")
-                    .stepName("Epistemic Verdict & Explainability Synthesis")
-                    .status("COMPLETED")
-                    .detail("Verdict: " + verdict + " (Confidence: LOW)")
+                    .detail("Generated blocked input report with actionable guidance.")
                     .build());
             return steps;
         }
 
-        if (val != null && !val.isVerifiableClaim()) {
-            steps.add(PipelineStep.builder()
-                    .stepNumber("05")
-                    .stepName("Claim Verifiability & Ambiguity Triage")
-                    .status("BLOCKED")
-                    .detail("Non-verifiable: " + val.getRejectionReason())
-                    .build());
-            steps.add(PipelineStep.builder()
-                    .stepNumber("06")
-                    .stepName("Atomic Claim Decomposition")
-                    .status("SKIPPED")
-                    .detail("Skipped: Non-verifiable input.")
-                    .build());
-            steps.add(PipelineStep.builder()
-                    .stepNumber("07")
-                    .stepName("Tiered Corroboration & Regional Search")
-                    .status("SKIPPED")
-                    .detail("Skipped: External wire query bypassed.")
-                    .build());
-            steps.add(PipelineStep.builder()
-                    .stepNumber("08")
-                    .stepName("Anti-Echo Syndication Clustering")
-                    .status("SKIPPED")
-                    .detail("Skipped.")
-                    .build());
-            steps.add(PipelineStep.builder()
-                    .stepNumber("09")
-                    .stepName("Normalized Scoring & Contradiction Penalty")
-                    .status("COMPLETED")
-                    .detail("Support Score: N/A (Unassigned).")
-                    .build());
-            steps.add(PipelineStep.builder()
-                    .stepNumber("10")
-                    .stepName("Epistemic Verdict & Explainability Synthesis")
-                    .status("COMPLETED")
-                    .detail("Verdict: " + verdict)
-                    .build());
-            return steps;
-        }
+        steps.add(PipelineStep.builder()
+                .stepNumber("04")
+                .stepName("Verifiability Gate")
+                .status("PASSED")
+                .detail("Declarative factual assertion passed verifiability gate.")
+                .build());
 
-        if (isBlocked) {
-            steps.add(PipelineStep.builder()
-                    .stepNumber("05")
-                    .stepName("Claim Verifiability & Ambiguity Triage")
-                    .status("BLOCKED")
-                    .detail("Blocked: No verifiable claim extracted.")
-                    .build());
-            steps.add(PipelineStep.builder()
-                    .stepNumber("06")
-                    .stepName("Atomic Claim Decomposition")
-                    .status("SKIPPED")
-                    .detail("Skipped.")
-                    .build());
-            steps.add(PipelineStep.builder()
-                    .stepNumber("07")
-                    .stepName("Tiered Corroboration & Regional Search")
-                    .status("SKIPPED")
-                    .detail("Skipped.")
-                    .build());
-            steps.add(PipelineStep.builder()
-                    .stepNumber("08")
-                    .stepName("Anti-Echo Syndication Clustering")
-                    .status("SKIPPED")
-                    .detail("Skipped.")
-                    .build());
-            steps.add(PipelineStep.builder()
-                    .stepNumber("09")
-                    .stepName("Normalized Scoring & Contradiction Penalty")
-                    .status("COMPLETED")
-                    .detail("Support Score: N/A.")
-                    .build());
-            steps.add(PipelineStep.builder()
-                    .stepNumber("10")
-                    .stepName("Epistemic Verdict & Explainability Synthesis")
-                    .status("COMPLETED")
-                    .detail("Verdict: " + verdict)
-                    .build());
-            return steps;
-        }
-
+        // Stage 05: Evidence Retrieval
         steps.add(PipelineStep.builder()
                 .stepNumber("05")
-                .stepName("Claim Verifiability & Ambiguity Triage")
-                .status("PASSED")
-                .detail("Declarative news claim verified with factual assertions.")
+                .stepName("Evidence Retrieval")
+                .status("COMPLETED")
+                .detail("Targeted queries executed across accredited live wires and knowledge archives.")
                 .build());
 
-        // Stage 06: Atomic Claim Decomposition
-        int subClaimCount = subClaims != null && !subClaims.isEmpty() ? subClaims.size() : 1;
+        // Stage 06: Evidence Validation & Admission Gate
         steps.add(PipelineStep.builder()
                 .stepNumber("06")
-                .stepName("Atomic Claim Decomposition")
+                .stepName("Evidence Validation & Admission Gate")
                 .status("COMPLETED")
-                .detail(subClaimCount + " atomic proposition(s) extracted with Entity-Predicate-Value semantics & centrality weighting.")
+                .detail("Candidate sources validated against claim entity, location, and topic proposition.")
                 .build());
 
-        // Stage 07: Tiered Corroboration & Regional Search
+        // Stage 07: Contradiction & Stance Analysis
+        int subClaimCount = subClaims != null && !subClaims.isEmpty() ? subClaims.size() : 1;
         steps.add(PipelineStep.builder()
                 .stepNumber("07")
-                .stepName("Tiered Corroboration & Regional Search")
+                .stepName("Contradiction & Stance Analysis")
                 .status("COMPLETED")
-                .detail("Queried Level-1 Primary Authorities, Level-2 Regional & National Press, Level-3 Fact-Checking Archives.")
+                .detail("Multi-subclaim stance analysis (" + subClaimCount + " proposition(s)) and contradiction penalty assessment.")
                 .build());
 
-        // Stage 08: Anti-Echo Syndication Clustering
+        // Stage 08: Evidence Fusion & Scoring
         int clusterCount = clusters != null ? clusters.size() : 1;
         steps.add(PipelineStep.builder()
                 .stepNumber("08")
-                .stepName("Anti-Echo Syndication Clustering")
+                .stepName("Evidence Fusion & Scoring")
                 .status("COMPLETED")
-                .detail("Dispatches grouped into " + clusterCount + " independent evidence cluster(s) with syndication deduplication.")
+                .detail("Gated evidence fusion applied across " + clusterCount + " independent evidence cluster(s).")
                 .build());
 
-        // Stage 09: Normalized Scoring & Contradiction Penalty
+        // Stage 09: Image Forensics & Modality Decoupling
         steps.add(PipelineStep.builder()
                 .stepNumber("09")
-                .stepName("Normalized Scoring & Contradiction Penalty")
-                .status("COMPLETED")
-                .detail("Computed 7-feature normalized base score with explicit contradiction penalty deduction.")
+                .stepName("Image Forensics & Modality Decoupling")
+                .status("IMAGE".equalsIgnoreCase(inputType) ? "COMPLETED" : "PASSED")
+                .detail("IMAGE".equalsIgnoreCase(inputType) ? "ELA compression and AI image indicators computed." : "Decoupled text modality.")
                 .build());
 
-        // Stage 10: Epistemic Verdict & Explainability Synthesis
+        // Stage 10: XAI Report & Provenance Generation
         steps.add(PipelineStep.builder()
                 .stepNumber("10")
-                .stepName("Epistemic Verdict & Explainability Synthesis")
-                .status("COMPLETED")
-                .detail("Verdict: " + verdict + " synthesized with audit trail and explainability matrix.")
+                .stepName("XAI Report & Provenance Generation")
+                .status("PASSED")
+                .detail("Synthesized explainability matrix, origin discovery, and audit trail.")
                 .build());
 
         return steps;
