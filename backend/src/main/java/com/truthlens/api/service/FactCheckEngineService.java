@@ -242,7 +242,7 @@ public class FactCheckEngineService {
         }
 
         // 2. Pre-Check: Validate Claim Verifiability / Check-Worthiness & Input Classification Gate
-        // STRICT ANTI-HALLUCINATION RULE: Questions, opinions, and requests NEVER execute search or receive truth scores.
+        // STRICT ANTI-HALLUCINATION RULE: Questions, opinions, commands, and fragments NEVER execute search or receive truth scores.
         ClaimVerifiabilityValidator.ValidationResult validation = claimVerifiabilityValidator.validateClaimVerifiability(contentToAnalyze);
         if (!validation.isVerifiableClaim()) {
             NlpAnalysisResponse nlpResults = nlpPipelineService.processText(contentToAnalyze);
@@ -258,19 +258,23 @@ public class FactCheckEngineService {
                     .claimSource(claimSource)
                     .claimDetected(false)
                     .verifiable(false)
+                    .claimType(validation.getClaimType())
+                    .extractionConfidence(validation.getExtractionConfidence())
+                    .verificationEligible(false)
+                    .claimFingerprint(validation.getFingerprint())
                     .pipelineStatus("BLOCKED")
-                    .blockedAt("Stage 04 — Verifiability Gate")
+                    .blockedAt("Stage 02 — Input Classification & Verifiability Gate")
                     .stopReason("The submitted input is classified as " + inputTypeStr + ". " + validation.getRejectionReason() + ".")
                     .suggestedAction(validation.getSuggestedAction())
                     .claimSummary("Non-Verifiable Input: '" + (contentToAnalyze.length() > 50 ? contentToAnalyze.substring(0, 47) + "..." : contentToAnalyze) + "'")
                     .explicitClaimText(contentToAnalyze)
-                    .genuinenessScore(null) // Unassigned / N/A
-                    .supportScore(null) // Unassigned / N/A
+                    .genuinenessScore(null) // Strictly null / N/A
+                    .supportScore(null) // Strictly null / N/A
                     .baseSupportScore(null)
                     .contradictionPenalty(null)
                     .verdict("NON-VERIFIABLE INPUT")
                     .verdictBadgeColor("#64748B")
-                    .confidence("N/A")
+                    .confidence("HIGH")
                     .confidenceScore(null)
                     .evidenceCompleteness(0)
                     .asOfStatus("UNVERIFIED")
@@ -400,6 +404,14 @@ public class FactCheckEngineService {
             } catch (Exception ignored) {}
         }
 
+        boolean isInsufficientEvidence = "INSUFFICIENT EVIDENCE".equals(verdict) || verdict.contains("INSUFFICIENT");
+        Integer finalGenuinenessScore = isInsufficientEvidence ? null : score;
+        Integer finalSupportScore = isInsufficientEvidence ? null : score;
+        Integer finalBaseScore = isInsufficientEvidence ? null : baseScore;
+        Integer finalPenalty = isInsufficientEvidence ? null : penalty;
+        String finalConfidence = isInsufficientEvidence ? "LOW" : confidenceLevel;
+        Integer finalConfidenceScore = isInsufficientEvidence ? 30 : confidenceScore;
+
         return ClaimVerificationResponse.builder()
                 .id(resultId)
                 .inputType(finalInputType)
@@ -407,19 +419,24 @@ public class FactCheckEngineService {
                 .claimSource(claimSource)
                 .claimDetected(true)
                 .verifiable(true)
+                .claimType(validation.getClaimType())
+                .extractionConfidence(validation.getExtractionConfidence())
+                .verificationEligible(true)
+                .claimFingerprint(validation.getFingerprint())
+                .requiresClaimConfirmation(imageAnalysis != null && "MEDIUM".equals(imageAnalysis.getOcrQualityLevel()))
                 .pipelineStatus("COMPLETED")
                 .claimSummary(summary)
                 .explicitClaimText(imageAnalysis != null ? imageAnalysis.getExplicitClaimText() : contentToAnalyze)
                 .inferredContext(imageAnalysis != null ? imageAnalysis.getInferredContext() : null)
                 .visualContextDescription(imageAnalysis != null ? imageAnalysis.getVisualContextDescription() : null)
-                .genuinenessScore(score) // Maintained for backward compatibility
-                .supportScore(score) // Explicit Evidence Support Score
-                .baseSupportScore(baseScore)
-                .contradictionPenalty(penalty)
+                .genuinenessScore(finalGenuinenessScore) // null (N/A) for INSUFFICIENT EVIDENCE
+                .supportScore(finalSupportScore) // null (N/A) for INSUFFICIENT EVIDENCE
+                .baseSupportScore(finalBaseScore)
+                .contradictionPenalty(finalPenalty)
                 .verdict(verdict)
                 .verdictBadgeColor(verdictBadgeColor)
-                .confidence(confidenceLevel)
-                .confidenceScore(confidenceScore)
+                .confidence(finalConfidence)
+                .confidenceScore(finalConfidenceScore)
                 .evidenceCompleteness(evidenceCompleteness)
                 .asOfStatus(asOfStatus)
                 .distortionType(distortionType)
@@ -545,6 +562,10 @@ public class FactCheckEngineService {
 
     private String determineContradictionSeverity(String text, Optional<ExternalFactCheckService.ExternalFactResult> externalFact,
                                                  MatchResult match, List<DecomposedClaim> subClaims) {
+        if (checkDemographicAnomaly(text).isPresent()) {
+            return "DIRECT_FACTUAL_REVERSAL";
+        }
+
         if (externalFact.isPresent() && externalFact.get().isContradiction() && externalFact.get().getContradictionSeverity() != null) {
             return externalFact.get().getContradictionSeverity();
         }
@@ -600,14 +621,11 @@ public class FactCheckEngineService {
             VerifiedSource domainSource,
             List<DecomposedClaim> subClaims
     ) {
-        double debunkedSim = match != null ? match.getDebunkedSimilarity() : 0.0;
-        double verifiedSim = match != null ? match.getVerifiedSimilarity() : 0.0;
-
-        // 0. Demographic anomaly check
-        Optional<String> demographicAnomaly = checkDemographicAnomaly(text);
-        if (demographicAnomaly.isPresent()) {
-            return new SupportScoreCalculationResult(95, 80, 15);
+        if (checkDemographicAnomaly(text).isPresent()) {
+            return new SupportScoreCalculationResult(20, 75, 5);
         }
+        double verifiedSim = match != null ? match.getVerifiedSimilarity() : 0.0;
+        double debunkedSim = match != null ? match.getDebunkedSimilarity() : 0.0;
 
         // 1. Determine Contradiction Penalty
         int penalty = 0;
@@ -1104,8 +1122,9 @@ public class FactCheckEngineService {
         }
 
         if (reasons.isEmpty()) {
-            reasons.add("Contains unverified assertions without independent confirmation from primary wire agencies.");
-            reasons.add("Requires independent verification before accepting as genuine fact.");
+            reasons.add("Evidence Status: 0 relevant corroborating or refuting sources found in accredited wire archives.");
+            reasons.add("Evidence Support Score: N/A (unassigned due to lack of independent evidence).");
+            reasons.add("Epistemic Note: Lack of immediate evidence does not equate to the claim being false (may be an emerging event or localized assertion).");
         }
 
         return reasons;
@@ -1155,7 +1174,7 @@ public class FactCheckEngineService {
         }
 
         if ("INSUFFICIENT EVIDENCE".equals(verdict) || "INSUFFICIENT_EVIDENCE".equals(verdict)) {
-            return "TruthLens evaluated this submission as INSUFFICIENT EVIDENCE. No primary wire agency or official registry has reported this assertion yet. Emerging claims require independent primary documentation.";
+            return "TruthLens evaluated this submission as INSUFFICIENT EVIDENCE. No primary wire agency or official registry has reported this assertion yet. Score is N/A. This does NOT prove the claim is false; rather, independent verification is currently unavailable.";
         }
 
         return "This claim contains unverified assertions without independent confirmation from primary wire agencies. It requires primary source evidence before it can be verified as genuine.";
