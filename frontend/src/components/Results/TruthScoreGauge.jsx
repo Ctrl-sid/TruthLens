@@ -43,13 +43,15 @@ export default function TruthScoreGauge({ score, verdict, badgeColor }) {
           <i className="bi bi-info-circle me-1"></i> {verdict || 'Non-Verifiable Input'}
         </span>
         <p className="small text-muted mb-0" style={{ fontSize: '0.825rem' }}>
-          {isAmbiguous ?
+          {verdict?.includes('INSUFFICIENT') ?
+            "No reliable independent evidence found in accredited wire archives. Score: N/A." :
+           (isAmbiguous ?
             "Non-declarative social post. Disambiguate target above. Score: N/A." :
            (isNoClaim ? 
             "Image lacks a declarative factual assertion. Genuineness Score: N/A." :
            (isOcrInsufficient ? 
             "OCR quality insufficient for automated verification. Score: N/A." : 
-            "No declarative factual assertion detected. Score: N/A."))}
+            "No declarative factual assertion detected. Score: N/A.")))}
         </p>
       </div>
     );

@@ -35,11 +35,17 @@ export default function RationaleCard({
     if (verdict?.includes('INSUFFICIENT')) {
       return "Why is there insufficient evidence?";
     }
-    if (verdict === 'NON-VERIFIABLE IMAGE' || verdict === 'OCR UNRELIABLE') {
-      return "Why was verification blocked?";
+    if (verdict === 'OCR UNRELIABLE' || verdict === 'OCR_UNRELIABLE' || verdict === 'NON-VERIFIABLE IMAGE') {
+      return "Why couldn't the claim be extracted from this image?";
     }
-    if (verdict === 'NO CLAIM DETECTED' || verdict === 'NO VERIFIABLE CLAIM') {
-      return "No verifiable claim detected";
+    if (verdict?.includes('CONTRADICTED') || verdict?.includes('HOAX') || verdict?.includes('FABRICATED')) {
+      return "Why is this claim contradicted?";
+    }
+    if (verdict?.includes('PARTIALLY')) {
+      return "Why is this claim only partially supported?";
+    }
+    if (verdict?.includes('SUPPORTED') || verdict?.includes('GENUINE')) {
+      return "Why is this claim supported?";
     }
     if (isNonClaim) {
       return "Why can't this input be verified?";
