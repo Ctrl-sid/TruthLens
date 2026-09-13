@@ -198,9 +198,9 @@ public class ExternalFactCheckService {
 
             double overlap = calculateQueryArticleOverlap(originalQuery, title);
             double claimRelevance = calculateClaimRelevance(originalQuery, title, context);
-            if (claimRelevance < 0.35 || overlap < 0.25) {
+            if (claimRelevance < 0.65 || overlap < 0.25) {
                 rejectedCount++;
-                continue; // Filter out low-relevance noise or mismatched topic
+                continue; // Strictly discard candidate evidence below 0.65 relevance threshold
             }
 
             if (!isTier1AccreditedPublisher(source, domain)) {
@@ -235,6 +235,8 @@ public class ExternalFactCheckService {
                 String evidenceId = "E00" + (crossReferencedList.size() + 1);
                 String evidenceStatus = itemContradiction.isContradicted() ? "RELEVANT_REFUTATION" : "RELEVANT_SUPPORT";
                 double evidenceSupport = Math.round(claimRelevance * (itemContradiction.isContradicted() ? 10.0 : 90.0) * (cred / 100.0) * (independence / 100.0) * 10.0) / 10.0;
+                double evidenceContribution = itemContradiction.isContradicted() ? 0.0 : Math.round(claimRelevance * (cred / 100.0) * (independence / 100.0) * 100.0) / 100.0;
+                String claimTypeComp = claimRelevance >= 0.80 ? "HIGH" : (claimRelevance >= 0.65 ? "MEDIUM" : "LOW");
                 boolean isGeoMatch = !geo.isBlank() && title.toLowerCase().contains(geo.toLowerCase());
 
                 List<String> acceptanceReasons = new ArrayList<>();
@@ -257,6 +259,9 @@ public class ExternalFactCheckService {
                         .credibilityRating(cred)
                         .sourceAuthority(cred / 100.0)
                         .claimRelevance(claimRelevance)
+                        .relevanceScore(claimRelevance)
+                        .evidenceContribution(evidenceContribution)
+                        .claimTypeCompatibility(claimTypeComp)
                         .semanticSimilarity(overlap)
                         .evidenceSupport(evidenceSupport)
                         .eventMatch(true)
@@ -277,7 +282,7 @@ public class ExternalFactCheckService {
             }
         }
 
-        if (bestTitle != null && bestOverlap >= 0.35) {
+        if (bestTitle != null && bestOverlap >= 0.65) {
             boolean isContradicted = bestContradiction != null && bestContradiction.isContradicted();
             String severity = bestContradiction != null ? bestContradiction.getSeverity() : "NONE";
             String distortionType = bestContradiction != null ? bestContradiction.getDistortionType() : "NONE";
@@ -468,24 +473,49 @@ public class ExternalFactCheckService {
         Integer qNum = extractFirstNumber(q, wordToNum);
         Integer aNum = extractFirstNumber(a, wordToNum);
 
-        if (qNum != null && aNum != null && !qNum.equals(aNum)) {
-            boolean articleContainsQueryNumber = a.contains(" " + qNum + " ") || a.contains(" " + qNum + ",") || a.contains(" " + qNum + ".");
-            if (!articleContainsQueryNumber) {
-                if (qNum == 0 && aNum > 0) {
-                    return new ContradictionCheck(true, "DIRECT_FACTUAL_REVERSAL", "POLARITY_DISTORTION",
-                            "Claim asserts zero / none, whereas verified coverage confirms " + aNum + ".");
-                }
+        boolean isAtLeast = q.contains("at least") || q.contains("minimum of") || q.contains("more than") || q.contains("over ");
+        boolean isUpTo = q.contains("up to") || q.contains("fewer than") || q.contains("less than") || q.contains("under ");
+        boolean isExact = q.contains("exactly") || q.contains("precisely");
 
-                double deltaRatio = (double) Math.abs(qNum - aNum) / Math.max(qNum, aNum);
-                if (deltaRatio <= 0.05 && Math.abs(qNum - aNum) <= 2) {
-                    return new ContradictionCheck(true, "MINOR_DISCREPANCY", "NUMERICAL_DISTORTION",
-                            "Minor variance in reported figures (claim states " + qNum + ", news reports " + aNum + ").");
-                } else if (deltaRatio <= 0.25) {
-                    return new ContradictionCheck(true, "MODERATE_CONTRADICTION", "NUMERICAL_DISTORTION",
-                            "Moderate discrepancy in reported metrics (claim states " + qNum + ", news reports " + aNum + ").");
+        if (qNum != null && aNum != null) {
+            if (isAtLeast) {
+                if (aNum >= qNum) {
+                    return new ContradictionCheck(false, "NONE", "NONE", null);
                 } else {
                     return new ContradictionCheck(true, "MAJOR_CONTRADICTION", "NUMERICAL_DISTORTION",
-                            "Significant contradiction in reported figures (claim states " + qNum + ", news reports " + aNum + ").");
+                            "Claim asserts at least " + qNum + ", whereas reports confirm only " + aNum + ".");
+                }
+            } else if (isUpTo) {
+                if (aNum <= qNum) {
+                    return new ContradictionCheck(false, "NONE", "NONE", null);
+                } else {
+                    return new ContradictionCheck(true, "MAJOR_CONTRADICTION", "NUMERICAL_DISTORTION",
+                            "Claim asserts up to " + qNum + ", whereas reports indicate " + aNum + ".");
+                }
+            } else if (isExact) {
+                if (!qNum.equals(aNum)) {
+                    return new ContradictionCheck(true, "MAJOR_CONTRADICTION", "NUMERICAL_DISTORTION",
+                            "Claim asserts exactly " + qNum + ", whereas reports confirm " + aNum + ".");
+                }
+            } else if (!qNum.equals(aNum)) {
+                boolean articleContainsQueryNumber = a.contains(" " + qNum + " ") || a.contains(" " + qNum + ",") || a.contains(" " + qNum + ".");
+                if (!articleContainsQueryNumber) {
+                    if (qNum == 0 && aNum > 0) {
+                        return new ContradictionCheck(true, "DIRECT_FACTUAL_REVERSAL", "POLARITY_DISTORTION",
+                                "Claim asserts zero / none, whereas verified coverage confirms " + aNum + ".");
+                    }
+
+                    double deltaRatio = (double) Math.abs(qNum - aNum) / Math.max(qNum, aNum);
+                    if (deltaRatio <= 0.05 && Math.abs(qNum - aNum) <= 2) {
+                        return new ContradictionCheck(true, "MINOR_DISCREPANCY", "NUMERICAL_DISTORTION",
+                                "Minor variance in reported figures (claim states " + qNum + ", news reports " + aNum + ").");
+                    } else if (deltaRatio <= 0.25) {
+                        return new ContradictionCheck(true, "MODERATE_CONTRADICTION", "NUMERICAL_DISTORTION",
+                                "Moderate discrepancy in reported metrics (claim states " + qNum + ", news reports " + aNum + ").");
+                    } else {
+                        return new ContradictionCheck(true, "MAJOR_CONTRADICTION", "NUMERICAL_DISTORTION",
+                                "Significant contradiction in reported figures (claim states " + qNum + ", news reports " + aNum + ").");
+                    }
                 }
             }
         }
@@ -763,40 +793,89 @@ public class ExternalFactCheckService {
 
     public double calculateClaimRelevance(String query, String articleTitle, ClaimContextInfo context) {
         if (query == null || articleTitle == null) return 0.0;
-        double lexicalOverlap = calculateQueryArticleOverlap(query, articleTitle);
-        if (lexicalOverlap < 0.20) return 0.0;
-
         String qLower = query.toLowerCase();
         String tLower = articleTitle.toLowerCase();
 
-        // 1. Geographic Entity Relevance Check
+        // 1. Semantic / Lexical Similarity (25% weight)
+        double lexicalOverlap = calculateQueryArticleOverlap(query, articleTitle);
+
+        // 2. Entity Overlap (20% weight)
+        double entityOverlap = 0.50;
         if (context != null && !context.getGeographicEntities().isEmpty()) {
-            boolean anyGeoMatch = false;
-            for (String geo : context.getGeographicEntities()) {
-                if (tLower.contains(geo.toLowerCase())) {
-                    anyGeoMatch = true;
-                    break;
-                }
-            }
-            if (!anyGeoMatch) {
-                // If claim specifies location (e.g. Nepal, Kerala, North Carolina) and title has completely different geography, reject or sharply penalize
-                if (tLower.contains("uk") || tLower.contains("london") || tLower.contains("britain") || tLower.contains("australia") || tLower.contains("canada")) {
-                    return 0.05;
-                }
-                lexicalOverlap *= 0.70;
-            } else {
-                lexicalOverlap = Math.min(1.0, lexicalOverlap * 1.25);
-            }
+            boolean match = context.getGeographicEntities().stream().anyMatch(g -> tLower.contains(g.toLowerCase()));
+            entityOverlap = match ? 1.0 : 0.10;
+        } else {
+            long entMatches = Arrays.stream(query.split("\\s+"))
+                    .filter(w -> w.length() > 2 && Character.isUpperCase(w.charAt(0)))
+                    .filter(w -> tLower.contains(w.toLowerCase()))
+                    .count();
+            entityOverlap = entMatches > 0 ? 1.0 : 0.30;
         }
 
-        // 2. Domain / Topic Relevance Check (Disaster vs Books/Entertainment)
-        boolean isDisasterClaim = qLower.contains("flood") || qLower.contains("earthquake") || qLower.contains("cyclone") || qLower.contains("killed") || qLower.contains("death") || qLower.contains("casualt");
-        boolean isIrrelevantLifestyleArticle = tLower.contains("book") || tLower.contains("children do") || tLower.contains("parenting") || tLower.contains("movie") || tLower.contains("review") || tLower.contains("trailer");
-        if (isDisasterClaim && isIrrelevantLifestyleArticle) {
-            return 0.02;
+        // 3. Event / Action Overlap (20% weight)
+        double eventOverlap = 0.50;
+        List<String> eventKeywords = List.of("flood", "earthquake", "dispatched", "relief", "sent", "vaccine", "telescope", "discovery", "killed", "dead", "cyclone", "fire", "crash", "won", "scored", "aid", "passed", "approves");
+        long qEvents = eventKeywords.stream().filter(qLower::contains).count();
+        if (qEvents > 0) {
+            long aEvents = eventKeywords.stream().filter(k -> qLower.contains(k) && tLower.contains(k)).count();
+            eventOverlap = (double) aEvents / qEvents;
+        } else {
+            eventOverlap = lexicalOverlap;
         }
 
-        return Math.min(1.0, Math.max(0.0, lexicalOverlap));
+        // 4. Temporal Compatibility (15% weight)
+        double temporalCompatibility = 1.0;
+        Integer qYear = extractYear(qLower);
+        Integer aYear = extractYear(tLower);
+        if (qYear != null && aYear != null && !qYear.equals(aYear)) {
+            temporalCompatibility = 0.10;
+        }
+
+        // 5. Geographic Compatibility (10% weight)
+        double geoCompatibility = 0.80;
+        List<String> geoRegions = List.of("nepal", "india", "uk", "london", "us", "usa", "america", "china", "japan", "france", "germany", "russia", "ukraine", "north carolina", "tennessee");
+        String qGeo = geoRegions.stream().filter(qLower::contains).findFirst().orElse(null);
+        String aGeo = geoRegions.stream().filter(tLower::contains).findFirst().orElse(null);
+        if (qGeo != null && aGeo != null) {
+            geoCompatibility = qGeo.equalsIgnoreCase(aGeo) ? 1.0 : 0.0;
+        } else if (qGeo != null) {
+            geoCompatibility = tLower.contains(qGeo) ? 1.0 : 0.30;
+        }
+
+        // 6. Claim-Type Compatibility (10% weight)
+        double claimTypeCompatibility = 0.80;
+        boolean isDisaster = qLower.contains("flood") || qLower.contains("earthquake") || qLower.contains("disaster") || qLower.contains("killed") || qLower.contains("relief");
+        boolean isLifestyleOrBook = tLower.contains("book") || tLower.contains("children do") || tLower.contains("parenting") || tLower.contains("movie") || tLower.contains("review") || tLower.contains("trailer") || tLower.contains("essay");
+        if (isDisaster && isLifestyleOrBook) {
+            claimTypeCompatibility = 0.0;
+        }
+
+        // If geo or claim-type or event is complete mismatch (0.0), return very low score (rejected)
+        if (geoCompatibility == 0.0 || claimTypeCompatibility == 0.0 || (qEvents > 0 && eventOverlap == 0.0)) {
+            return 0.05;
+        }
+
+        // Multi-dimensional Weighted Formula:
+        // 25% semantic + 20% entity + 20% event + 15% temporal + 10% geo + 10% claimType
+        double weightedRelevance = (0.25 * lexicalOverlap)
+                + (0.20 * entityOverlap)
+                + (0.20 * eventOverlap)
+                + (0.15 * temporalCompatibility)
+                + (0.10 * geoCompatibility)
+                + (0.10 * claimTypeCompatibility);
+
+        return Math.min(1.0, Math.max(0.0, weightedRelevance));
+    }
+
+    private Integer extractYear(String text) {
+        if (text == null) return null;
+        Matcher m = Pattern.compile("\\b(19\\d{2}|20\\d{2})\\b").matcher(text);
+        if (m.find()) {
+            try {
+                return Integer.parseInt(m.group(1));
+            } catch (NumberFormatException ignored) {}
+        }
+        return null;
     }
 
     private double calculateQueryArticleOverlap(String query, String articleTitle) {
