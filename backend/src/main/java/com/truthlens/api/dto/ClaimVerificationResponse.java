@@ -24,6 +24,11 @@ public class ClaimVerificationResponse {
     private String stopReason; // Reason why pipeline stopped
     private String suggestedAction; // Guidance/next action for user
     private String claimSummary;
+    private String claimType; // e.g. "GOVERNMENT_ACTION", "EVENT_OCCURRENCE", "CASUALTY_COUNT", "SCIENTIFIC", "POLICY"
+    private Double extractionConfidence; // e.g. 0.95 (Confidence that a valid claim was accurately extracted)
+    private Boolean verificationEligible; // True if input passed the hard claim-worthiness gate
+    private Boolean requiresClaimConfirmation; // True if medium OCR quality requires user confirmation
+    private ClaimFingerprint claimFingerprint; // Structured entity + event fingerprint
     private String explicitClaimText; // Exact extracted or typed text (e.g. Call to action / prayer)
     private String inferredContext; // Implied event (e.g. Disaster/Flooding in North Carolina & Tennessee)
     private String visualContextDescription; // Description of embedded photo (e.g. child and dog in flood water)
@@ -262,6 +267,20 @@ public class ClaimVerificationResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
+    public static class ClaimFingerprint {
+        private String subject; // e.g. "India"
+        private String action; // e.g. "dispatched"
+        private String objectValue; // e.g. "relief materials"
+        private String location; // e.g. "Nepal"
+        private String event; // e.g. "flood"
+        private String eventType; // e.g. "DISASTER_RELIEF", "CASUALTY", "POLICY"
+        private String time; // extracted date or temporal context
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
     public static class SourceEvidence {
         private String evidenceId; // e.g. "E001", "E002"
         private String sourceName;
@@ -272,8 +291,11 @@ public class ClaimVerificationResponse {
         private int credibilityRating;
         private double sourceAuthority; // 0.00 to 1.00
         private double claimRelevance; // 0.00 to 1.00 (Entity + Event + Topic alignment)
+        private double relevanceScore; // Multi-dimensional weighted relevance score (0.00 to 1.00)
         private double semanticSimilarity; // 0.00 to 1.00
         private double evidenceSupport; // 0.00 to 100.00
+        private double evidenceContribution; // Final weight contribution to verification score (0.0 to 100.0)
+        private String claimTypeCompatibility; // HIGH, MEDIUM, NONE, INCOMPATIBLE
         private boolean eventMatch;
         private boolean entityMatch;
         private boolean locationMatch;
@@ -289,7 +311,7 @@ public class ClaimVerificationResponse {
         private double contextualAuthorityScore; // 0.0 to 1.0
         private String geographicRelevance; // VERY_HIGH, HIGH, MEDIUM, LOW
         private String directness; // DIRECT_PRIMARY, SECONDARY_REPORTING, INDIRECT_REFERENCE
-        private String stance; // SUPPORTED, CONFIRMED, ARTICLE_REPORTS_CLAIM, REFUTED, DENIED, PARTIALLY_SUPPORTED, NOT_MENTIONED, UNCERTAIN
+        private String stance; // SUPPORTED, CONFIRMED, ARTICLE_REPORTS_CLAIM, REFUTED, DENIED, PARTIALLY_SUPPORTED, NOT_MENTIONED, UNCERTAIN, NOT_RELEVANT
         private String verdictBySource; // True, False, Unverified, Reported Allegation
         private String articleTitle;
         private String url;
