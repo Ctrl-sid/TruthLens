@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   ShieldCheck, 
   AlertTriangle, 
@@ -22,11 +22,23 @@ import {
   X,
   Search,
   ArrowRight,
-  GitBranch
+  GitBranch,
+  ChevronDown,
+  ChevronUp,
+  SlidersHorizontal,
+  Info,
+  Sparkles,
+  Zap,
+  CheckCircle,
+  XCircle,
+  MinusCircle
 } from 'lucide-react';
 
 export default function ExplainabilityCard({ result }) {
   if (!result) return null;
+
+  const [selectedStepIdx, setSelectedStepIdx] = useState(null);
+  const [showAllSteps, setShowAllSteps] = useState(false);
 
   const explainability = result.explainability || {};
   const subClaims = result.subClaims || [];
@@ -48,19 +60,19 @@ export default function ExplainabilityCard({ result }) {
     switch (conf?.toUpperCase()) {
       case 'HIGH':
         return (
-          <span className="px-3 py-1 text-xs font-semibold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
+          <span className="px-3 py-1 text-xs font-semibold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5 shadow-sm">
             <ShieldCheck className="w-3.5 h-3.5" /> High Confidence ({score}%)
           </span>
         );
       case 'LOW':
         return (
-          <span className="px-3 py-1 text-xs font-semibold rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1.5">
+          <span className="px-3 py-1 text-xs font-semibold rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1.5 shadow-sm">
             <AlertTriangle className="w-3.5 h-3.5" /> Low Confidence ({score}%)
           </span>
         );
       default:
         return (
-          <span className="px-3 py-1 text-xs font-semibold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
+          <span className="px-3 py-1 text-xs font-semibold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 shadow-sm">
             <HelpCircle className="w-3.5 h-3.5" /> Medium Confidence ({score}%)
           </span>
         );
@@ -108,11 +120,11 @@ export default function ExplainabilityCard({ result }) {
       case 'ATTRIBUTION_DISTORTION':
         return <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1"><Building2 className="w-3.5 h-3.5" /> Attribution Mismatch</span>;
       case 'NUMERICAL_DISTORTION':
-        return <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">Numerical Disparity</span>;
+        return <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> Numerical Disparity</span>;
       case 'POLARITY_DISTORTION':
-        return <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-rose-500/25 text-rose-300 border border-rose-500/40">Direct Polarity Reversal</span>;
+        return <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-rose-500/25 text-rose-300 border border-rose-500/40 flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> Direct Polarity Reversal</span>;
       case 'CONTEXT_DISTORTION':
-        return <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">Context Distortion</span>;
+        return <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1"><Info className="w-3.5 h-3.5" /> Context Distortion</span>;
       default:
         return null;
     }
@@ -121,9 +133,9 @@ export default function ExplainabilityCard({ result }) {
   const getAsOfBadge = (status) => {
     switch (status) {
       case 'SUPPORTED_AT_CLAIM_TIME':
-        return <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30 flex items-center gap-1"><Clock className="w-3 h-3" /> As-Of Claim Time: Supported (Developing)</span>;
+        return <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30 flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> As-Of Claim Time: Supported (Developing)</span>;
       case 'OUTDATED_SUPERSEDED':
-        return <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1"><Clock className="w-3 h-3" /> Status: Outdated / Superseded</span>;
+        return <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> Status: Outdated / Superseded</span>;
       default:
         return null;
     }
@@ -146,17 +158,43 @@ export default function ExplainabilityCard({ result }) {
     return <span className="px-2 py-0.5 text-[11px] font-semibold rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">Level 2 News Wire</span>;
   };
 
+  const shortStepNames = [
+    'Ingestion',
+    'Classify',
+    'Extract',
+    'Verifiability',
+    'Retrieval',
+    'Validation',
+    'Stance',
+    'Fusion',
+    'Forensics',
+    'XAI Report'
+  ];
+
+  const totalCompletedStages = pipelineSteps.filter(s => s.status === 'COMPLETED' || s.status === 'PASSED').length;
+  const isAllPassed = pipelineSteps.length > 0 && totalCompletedStages === pipelineSteps.length;
+  const blockedStep = pipelineSteps.find(s => s.status === 'BLOCKED');
+
+  const currentActiveStep = selectedStepIdx !== null 
+    ? pipelineSteps[selectedStepIdx] 
+    : (blockedStep || pipelineSteps[pipelineSteps.length - 1] || null);
+
   return (
     <div className="space-y-6">
-      {/* 1. Header, Confidence & Completeness Bar */}
-      <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-900/90 via-slate-800/80 to-slate-900/90 border border-slate-700/60 shadow-xl backdrop-blur-md">
+      {/* 1. Header & Executive Metrics Banner */}
+      <div className="p-6 rounded-2xl bg-gradient-to-r from-slate-900/95 via-slate-850/90 to-slate-900/95 border border-slate-700/60 shadow-xl backdrop-blur-md">
         <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-700/50">
           <div>
-            <span className="text-xs uppercase tracking-wider font-bold text-sky-400">TruthLens Claim-Contextual Decision Layer</span>
-            <h3 className="text-lg font-bold text-white mt-0.5 flex items-center gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs uppercase tracking-wider font-bold text-sky-400">TruthLens Claim-Contextual Decision Layer</span>
+            </div>
+            <h3 className="text-xl font-bold text-white mt-1 flex items-center gap-2.5">
               <Scale className="w-5 h-5 text-sky-400" />
               Evidence Synthesis & Explainability Report
             </h3>
+            <p className="text-xs text-slate-400 mt-1 mb-0">
+              Multi-source epistemic synthesis, pipeline trace audit, and contradiction scoring breakdown.
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {getAsOfBadge(asOfStatus)}
@@ -165,67 +203,178 @@ export default function ExplainabilityCard({ result }) {
           </div>
         </div>
 
-        {/* Verification Pipeline Execution Trace (Spec #35) */}
+        {/* 2. Interactive Streamlined Pipeline Stepper (Replacing Congested 10-Box Wall) */}
         {pipelineSteps && pipelineSteps.length > 0 && (
-          <div className="mt-4 p-4 rounded-xl bg-slate-950/70 border border-slate-700/60 shadow-lg space-y-2.5">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+          <div className="mt-5 p-4 sm:p-5 rounded-xl bg-slate-950/70 border border-slate-800/90 shadow-inner">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-slate-800/80">
               <div className="flex items-center gap-2">
                 <GitBranch className="w-4 h-4 text-cyan-400" />
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
-                  Verification Pipeline Execution Trace
+                  Verification Pipeline Stepper
                 </span>
               </div>
-              <span className="text-[11px] font-mono text-cyan-400 font-semibold">
-                Completed: {pipelineSteps.filter(s => s.status === 'COMPLETED' || s.status === 'PASSED').length}/{pipelineSteps.length} Stages
-              </span>
+              <div className="flex items-center gap-2">
+                <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold flex items-center gap-1.5 ${
+                  blockedStep 
+                    ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' 
+                    : isAllPassed 
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
+                    : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                }`}>
+                  {blockedStep ? (
+                    <>
+                      <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                      Halted at Stage {blockedStep.stepNumber}
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      {totalCompletedStages}/{pipelineSteps.length} Stages Passed
+                    </>
+                  )}
+                </span>
+                
+                <button
+                  type="button"
+                  onClick={() => setShowAllSteps(!showAllSteps)}
+                  className="px-2.5 py-1 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white border border-slate-700 transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span>{showAllSteps ? 'Compact View' : 'Inspect Full Trace'}</span>
+                  {showAllSteps ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
+                </button>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
-              {pipelineSteps.map((step, idx) => {
-                const isCompleted = step.status === 'COMPLETED' || step.status === 'PASSED';
-                const isBlocked = step.status === 'BLOCKED';
-                const isNotExecuted = step.status === 'NOT_EXECUTED';
-                const isSkipped = step.status === 'SKIPPED';
+            {/* Visual Stepper Nodes Strip */}
+            <div className="py-2 overflow-x-auto">
+              <div className="flex items-center justify-between min-w-[620px] relative px-2">
+                {/* Connecting background track */}
+                <div className="absolute left-6 right-6 top-4 h-0.5 bg-slate-800 -z-0" />
+                
+                {pipelineSteps.map((step, idx) => {
+                  const isCompleted = step.status === 'COMPLETED' || step.status === 'PASSED';
+                  const isBlocked = step.status === 'BLOCKED';
+                  const isSkipped = step.status === 'SKIPPED';
+                  const isNotExecuted = step.status === 'NOT_EXECUTED';
+                  const isSelected = selectedStepIdx === idx || (selectedStepIdx === null && (blockedStep ? blockedStep.stepNumber === step.stepNumber : idx === pipelineSteps.length - 1));
 
-                return (
-                  <div 
-                    key={idx} 
-                    className={`p-2.5 rounded-lg border transition-all ${
-                      isBlocked 
-                        ? 'bg-rose-950/30 border-rose-500/40 text-rose-200' 
-                        : (isSkipped || isNotExecuted)
-                        ? 'bg-slate-900/30 border-slate-800/80 text-slate-500' 
-                        : isCompleted 
-                        ? 'bg-emerald-950/20 border-emerald-500/30 text-slate-200' 
-                        : 'bg-slate-900/60 border-slate-700 text-slate-300'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-1 mb-1">
-                      <span className="text-[10px] font-mono font-bold text-slate-400">
-                        STAGE {step.stepNumber}
-                      </span>
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                        isBlocked ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' :
-                        isNotExecuted ? 'bg-slate-800/60 text-slate-500 border border-slate-700' :
-                        isSkipped ? 'bg-slate-800 text-slate-500 border border-slate-700' :
-                        isCompleted ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
-                        'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setSelectedStepIdx(idx)}
+                      className={`relative z-10 flex flex-col items-center group transition-all cursor-pointer p-1 rounded-lg focus:outline-none ${
+                        isSelected ? 'scale-105' : 'opacity-85 hover:opacity-100'
+                      }`}
+                      title={`${step.stepNumber}. ${step.stepName} (${step.status})`}
+                    >
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-mono text-xs font-bold transition-all border ${
+                        isSelected ? 'ring-2 ring-cyan-400 ring-offset-2 ring-offset-slate-950' : ''
+                      } ${
+                        isBlocked
+                          ? 'bg-rose-950 border-rose-500 text-rose-300 shadow-rose-900/50 shadow-md'
+                          : isCompleted
+                          ? 'bg-emerald-950 border-emerald-500 text-emerald-300 shadow-emerald-900/50 shadow-md'
+                          : isSkipped || isNotExecuted
+                          ? 'bg-slate-900 border-slate-700 text-slate-500'
+                          : 'bg-cyan-950 border-cyan-500 text-cyan-300'
                       }`}>
-                        {isBlocked ? '✗ BLOCKED' : isNotExecuted ? '⛔ NOT EXECUTED' : isSkipped ? '⏸ SKIPPED' : isCompleted ? '✓ PASSED' : step.status}
+                        {isBlocked ? (
+                          <X className="w-4 h-4 text-rose-400" />
+                        ) : isCompleted ? (
+                          <Check className="w-4 h-4 text-emerald-400" />
+                        ) : isSkipped ? (
+                          <MinusCircle className="w-3.5 h-3.5 text-slate-400" />
+                        ) : (
+                          <span>{step.stepNumber}</span>
+                        )}
+                      </div>
+                      
+                      <span className={`text-[10px] font-medium mt-1.5 truncate max-w-[64px] text-center ${
+                        isSelected ? 'text-cyan-300 font-bold' : isCompleted ? 'text-slate-300' : 'text-slate-500'
+                      }`}>
+                        {shortStepNames[idx] || `Stage ${step.stepNumber}`}
                       </span>
-                    </div>
-                    <div className="text-xs font-semibold text-white truncate">{step.stepName}</div>
-                    <p className="text-[11px] text-slate-400 leading-tight line-clamp-2 mt-0.5 mb-0">
-                      {step.detail}
-                    </p>
-                  </div>
-                );
-              })}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
+
+            {/* Selected Stage Detail Box (Progressive Disclosure) */}
+            {currentActiveStep && !showAllSteps && (
+              <div className="mt-3.5 p-3.5 rounded-lg bg-slate-900/80 border border-slate-700/70 transition-all">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-slate-800 text-cyan-400 border border-slate-700">
+                      STAGE {currentActiveStep.stepNumber}
+                    </span>
+                    <h5 className="text-sm font-bold text-white mb-0">
+                      {currentActiveStep.stepName}
+                    </h5>
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    currentActiveStep.status === 'BLOCKED' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' :
+                    currentActiveStep.status === 'COMPLETED' || currentActiveStep.status === 'PASSED' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' :
+                    'bg-slate-800 text-slate-400 border border-slate-700'
+                  }`}>
+                    {currentActiveStep.status}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 mb-0 font-sans leading-relaxed">
+                  {currentActiveStep.detail}
+                </p>
+              </div>
+            )}
+
+            {/* Collapsible Full Step-by-Step Technical Trace Accordion */}
+            {showAllSteps && (
+              <div className="mt-4 pt-3 border-t border-slate-800 space-y-2.5 animate-fadeIn">
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
+                  <Info className="w-3.5 h-3.5 text-cyan-400" />
+                  Full 10-Stage Pipeline Audit Trail
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {pipelineSteps.map((step, idx) => {
+                    const isCompleted = step.status === 'COMPLETED' || step.status === 'PASSED';
+                    const isBlocked = step.status === 'BLOCKED';
+                    return (
+                      <div 
+                        key={idx}
+                        className={`p-3 rounded-lg border text-left transition-all ${
+                          isBlocked 
+                            ? 'bg-rose-950/30 border-rose-500/40 text-rose-200' 
+                            : isCompleted 
+                            ? 'bg-slate-900/60 border-slate-700/70 text-slate-200' 
+                            : 'bg-slate-900/30 border-slate-800/80 text-slate-500'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-1 mb-1">
+                          <span className="text-[10px] font-mono font-bold text-cyan-400">
+                            STAGE {step.stepNumber}
+                          </span>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                            isBlocked ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' :
+                            isCompleted ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                            'bg-slate-800 text-slate-500 border border-slate-700'
+                          }`}>
+                            {isBlocked ? '✗ BLOCKED' : isCompleted ? '✓ PASSED' : step.status}
+                          </span>
+                        </div>
+                        <div className="text-xs font-bold text-white mb-0.5">{step.stepName}</div>
+                        <p className="text-[11px] text-slate-400 leading-snug mb-0">
+                          {step.detail}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Evidence Completeness & Context Info */}
+        {/* 3. Evidence Completeness & Context Info */}
         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-700/50 space-y-2">
             <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider">
@@ -241,7 +390,7 @@ export default function ExplainabilityCard({ result }) {
                 style={{ width: `${Math.max(5, completeness)}%` }}
               />
             </div>
-            <p className="text-[11px] text-slate-400 leading-snug">
+            <p className="text-[11px] text-slate-400 leading-snug mb-0">
               {subClaims.length > 1 ? 
                 `${subClaims.filter(s => s.claimVerdict === 'VERIFIED' || s.claimVerdict === 'MOSTLY_VERIFIED').length} of ${subClaims.length} atomic factual components independently substantiated.` :
                 "Factual assertion evaluated against contextual authoritative records."}
@@ -252,7 +401,7 @@ export default function ExplainabilityCard({ result }) {
             <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-700/50 space-y-1.5">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                 <Globe className="w-4 h-4 text-emerald-400" />
-                Claim Context Engine
+                Claim Context & Target Authorities
               </span>
               <div className="text-xs text-slate-200">
                 <span className="text-slate-400">Domain:</span> <span className="font-semibold text-white">{context.domain}</span>
@@ -271,7 +420,7 @@ export default function ExplainabilityCard({ result }) {
           )}
         </div>
 
-        {/* Base Support Score & Contradiction Penalty Breakdown */}
+        {/* 4. Base Support Score & Contradiction Penalty Breakdown */}
         {((result.baseSupportScore != null && result.contradictionPenalty != null) || (explainability.baseSupportScore != null && explainability.contradictionPenalty != null)) && (
           <div className="mt-4 p-4 rounded-xl bg-slate-950/70 border border-slate-700/60 shadow-lg space-y-3">
             <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
@@ -282,57 +431,57 @@ export default function ExplainabilityCard({ result }) {
                 </span>
               </div>
               <span className="text-xs font-mono font-bold text-sky-400">
-                Formula: Final = max(0, min(100, Base - Penalty))
+                Net Score = max(0, Base - Penalty)
               </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800 text-center">
+              <div className="p-3.5 rounded-lg bg-slate-900/80 border border-slate-800 text-center">
                 <span className="text-[11px] uppercase font-bold text-slate-400 block mb-1">Base Support Score</span>
-                <span className="text-xl font-mono font-bold text-sky-400">
+                <span className="text-2xl font-mono font-bold text-sky-400">
                   {result.baseSupportScore != null ? result.baseSupportScore : explainability.baseSupportScore}/100
                 </span>
-                <span className="text-[10px] text-slate-500 block mt-0.5">7-Feature Normalized Synthesis</span>
+                <span className="text-[10px] text-slate-500 block mt-1">Multi-wire Corroboration Strength</span>
               </div>
 
-              <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800 text-center">
+              <div className="p-3.5 rounded-lg bg-slate-900/80 border border-slate-800 text-center">
                 <span className="text-[11px] uppercase font-bold text-slate-400 block mb-1">Contradiction Penalty</span>
-                <span className={`text-xl font-mono font-bold ${(result.contradictionPenalty || explainability.contradictionPenalty || 0) > 0 ? 'text-rose-400' : 'text-slate-400'}`}>
+                <span className={`text-2xl font-mono font-bold ${(result.contradictionPenalty || explainability.contradictionPenalty || 0) > 0 ? 'text-rose-400' : 'text-slate-400'}`}>
                   -{(result.contradictionPenalty != null ? result.contradictionPenalty : explainability.contradictionPenalty) || 0} pts
                 </span>
-                <span className="text-[10px] text-slate-500 block mt-0.5">
+                <span className="text-[10px] text-slate-500 block mt-1">
                   Severity: {severity.replace(/_/g, ' ')}
                 </span>
               </div>
 
-              <div className="p-3 rounded-lg bg-emerald-950/20 border border-emerald-500/30 text-center">
+              <div className="p-3.5 rounded-lg bg-emerald-950/20 border border-emerald-500/30 text-center">
                 <span className="text-[11px] uppercase font-bold text-emerald-400 block mb-1">Final Support Score</span>
-                <span className="text-xl font-mono font-bold text-emerald-300">
+                <span className="text-2xl font-mono font-bold text-emerald-300">
                   {(result.supportScore != null ? result.supportScore : explainability.finalSupportScore) != null ? `${result.supportScore || explainability.finalSupportScore}/100` : 'N/A'}
                 </span>
-                <span className="text-[10px] text-emerald-400/80 block mt-0.5">Epistemic Evidence Rating</span>
+                <span className="text-[10px] text-emerald-400/80 block mt-1">Calibrated Epistemic Rating</span>
               </div>
             </div>
           </div>
         )}
 
-        {/* 2. Structured Corroboration & Discrepancy Checklists */}
+        {/* 5. Structured Corroboration & Discrepancy Checklists */}
         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="p-4 rounded-xl bg-slate-950/50 border border-emerald-500/20 space-y-2.5">
             <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4" /> Corroboration Checklist
+              <CheckCircle2 className="w-4 h-4" /> Corroborated Findings
             </h4>
             {positiveChecklist.length > 0 ? (
-              <ul className="space-y-2 text-sm text-slate-200">
+              <ul className="space-y-2 text-sm text-slate-200 ps-0 mb-0 list-none">
                 {positiveChecklist.map((item, idx) => (
                   <li key={idx} className="flex items-start gap-2">
-                    <span className="text-emerald-400 font-bold mt-0.5">✓</span>
-                    <span>{item}</span>
+                    <span className="text-emerald-400 font-bold mt-0.5 shrink-0">✓</span>
+                    <span className="leading-snug">{item}</span>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-xs text-slate-400 italic">No positive independent confirmations found.</p>
+              <p className="text-xs text-slate-400 italic mb-0">No positive independent confirmations found.</p>
             )}
           </div>
 
@@ -341,21 +490,21 @@ export default function ExplainabilityCard({ result }) {
               <AlertTriangle className="w-4 h-4" /> Discrepancies & Cautionary Flags
             </h4>
             {warningChecklist.length > 0 ? (
-              <ul className="space-y-2 text-sm text-slate-200">
+              <ul className="space-y-2 text-sm text-slate-200 ps-0 mb-0 list-none">
                 {warningChecklist.map((item, idx) => (
                   <li key={idx} className="flex items-start gap-2">
-                    <span className="text-amber-400 font-bold mt-0.5">⚠</span>
-                    <span>{item}</span>
+                    <span className="text-amber-400 font-bold mt-0.5 shrink-0">⚠</span>
+                    <span className="leading-snug">{item}</span>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-xs text-slate-400 italic">No significant factual or numerical discrepancies detected.</p>
+              <p className="text-xs text-slate-400 italic mb-0">No significant factual or numerical discrepancies detected.</p>
             )}
           </div>
         </div>
 
-        {/* 3. Detected Factual Differences / Distortions Callout */}
+        {/* 6. Detected Factual Differences / Distortions Callout */}
         {detectedDiffs.length > 0 && (
           <div className="mt-4 p-4 rounded-xl bg-rose-950/30 border border-rose-500/30 space-y-2">
             <h4 className="text-xs font-bold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
@@ -364,7 +513,7 @@ export default function ExplainabilityCard({ result }) {
             <div className="space-y-1.5 text-sm text-rose-200">
               {detectedDiffs.map((diff, idx) => (
                 <div key={idx} className="flex items-start gap-2">
-                  <span className="font-bold text-rose-400">→</span>
+                  <span className="font-bold text-rose-400 shrink-0">→</span>
                   <span>{diff}</span>
                 </div>
               ))}
@@ -373,7 +522,7 @@ export default function ExplainabilityCard({ result }) {
         )}
       </div>
 
-      {/* 4. Retrieval Quality Diagnostics Panel (Spec #36) */}
+      {/* 7. Retrieval Quality Diagnostics Panel */}
       {(result.retrievalQuality || explainability.retrievalQuality) && (
         <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-700/60 shadow-xl backdrop-blur-md space-y-3">
           <div className="flex items-center justify-between pb-2 border-b border-slate-700/50">
@@ -438,7 +587,7 @@ export default function ExplainabilityCard({ result }) {
         </div>
       )}
 
-      {/* 5. Evidence Retrieval Audit Trail */}
+      {/* 8. Evidence Retrieval Audit Trail */}
       {audit.sourcesRetrieved > 0 && (
         <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-700/60 shadow-xl backdrop-blur-md space-y-3">
           <div className="flex items-center justify-between pb-2 border-b border-slate-700/50">
@@ -472,12 +621,12 @@ export default function ExplainabilityCard({ result }) {
             </div>
           </div>
           {audit.auditSummary && (
-            <p className="text-xs text-slate-400 italic pt-1">{audit.auditSummary}</p>
+            <p className="text-xs text-slate-400 italic pt-1 mb-0">{audit.auditSummary}</p>
           )}
         </div>
       )}
 
-      {/* 5. Atomic Sub-Claims Decomposition with Entity-Relationship Triples */}
+      {/* 9. Atomic Sub-Claims Decomposition with Entity-Relationship Triples */}
       {subClaims.length > 0 && (
         <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-700/60 shadow-xl backdrop-blur-md space-y-3">
           <div className="flex items-center justify-between pb-2 border-b border-slate-700/50">
@@ -536,7 +685,7 @@ export default function ExplainabilityCard({ result }) {
         </div>
       )}
 
-      {/* 6. Evidence Quality & Hierarchy Matrix Table with Justifications */}
+      {/* 10. Evidence Quality & Hierarchy Matrix Table */}
       {matrix.length > 0 && (
         <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-700/60 shadow-xl backdrop-blur-md space-y-3">
           <div className="flex items-center justify-between pb-2 border-b border-slate-700/50">
