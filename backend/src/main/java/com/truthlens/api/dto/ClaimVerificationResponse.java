@@ -65,11 +65,17 @@ public class ClaimVerificationResponse {
     private ClaimOriginDiscovery originDiscovery;
     private NlpAnalysisResponse nlpAnalysis;
     private ImageIntegrityAnalysis imageAnalysis; // Null if not image input
+    private String singleSourceGovNotice; // Notice when relying exclusively on 1 official source
+    private SocialViralityInfo socialVirality; // Tier 5 social media spread (isolated from scoring)
+    private String modalityDecision; // Combined image authenticity + claim verdict
+    private Boolean isStale; // True if breaking/casualty claim is aged
+    private String asOfTimestamp; // Timestamp of verification evaluation
+    private Integer staleAfterDays; // Recommended staleness interval in days
     private String timestamp;
     @Builder.Default
-    private String algorithmVersion = "3.0";
+    private String algorithmVersion = "3.2";
     @Builder.Default
-    private String scoringVersion = "3.0";
+    private String scoringVersion = "3.2";
 
     @Data
     @NoArgsConstructor
@@ -194,6 +200,11 @@ public class ClaimVerificationResponse {
         private Integer finalSupportScore; // Final score
         private String asOfStatus; // SUPPORTED_AT_CLAIM_TIME, CURRENTLY_VALID, OUTDATED_SUPERSEDED
         private String distortionType; // NUMERICAL_DISTORTION, LOCATION_DISTORTION, etc.
+        private String baseScoreFormula; // e.g. "Base = min(100, Sum(Tier_Weight * Stance_Multiplier * Relevance))"
+        private String penaltyScalingFormula; // e.g. "Effective_Penalty = Base_Penalty * (1 / (1 + 0.15 * (Clusters - 1)))"
+        private String singleSourceGovNotice; // Notice if relying exclusively on 1 Tier-1 source
+        @Builder.Default
+        private List<ClusterContribution> perClusterContributions = new ArrayList<>();
         @Builder.Default
         private List<String> positiveChecklist = new ArrayList<>(); // e.g. "✓ Corroborated across 2 independent wire clusters"
         @Builder.Default
@@ -204,6 +215,34 @@ public class ClaimVerificationResponse {
         private List<EvidenceItemSummary> evidenceMatrix = new ArrayList<>();
         private RetrievalAudit retrievalAudit;
         private RetrievalQuality retrievalQuality;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class ClusterContribution {
+        private String clusterId;
+        private String primaryOutlet;
+        private String evidenceTier;
+        private String stance;
+        private double relevanceScore;
+        private int pointContribution;
+        private String justification;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class SocialViralityInfo {
+        private int socialPostCount;
+        private String viralityLevel; // LOW, MEDIUM, HIGH, VIRAL_SPIKE
+        private String socialContextSummary;
+        @Builder.Default
+        private List<String> platformDistribution = new ArrayList<>();
+        @Builder.Default
+        private String advisoryNote = "Social media mentions are tracked for virality/spread context only and do not contribute to factual verification scores.";
     }
 
     @Data
@@ -366,6 +405,10 @@ public class ClaimVerificationResponse {
         private String visualContextDescription; // Description of embedded photo / visual scene
         private String contextualAuthenticity; // ORIGINAL_FOUND, OLDER_VERSION_FOUND, DUPLICATE_FOUND, SIMILAR_IMAGE_FOUND, UNVERIFIED_CONTEXT, MISLEADING_CONTEXT
         private String aiGenerationIndicator; // LOW, MEDIUM, HIGH, INCONCLUSIVE
+        private String aiGenerationLikelihood; // LOW, MEDIUM, HIGH, SYNTHETIC_DETECTED
+        private Double aiDetectionScore; // 0.0 to 100.0%
+        @Builder.Default
+        private List<String> aiDetectionSignals = new ArrayList<>(); // e.g. ["High-frequency Fourier pattern regularity", "Synthetic diffusion skin-smoothing artifact"]
         private String exifStatus; // "Sensor Metadata Available", "Stripped by Platform (Neutral)", "Edited Metadata"
         private String compressionAssessment; // "NORMAL", "ANOMALIES_DETECTED"
         private String pixelAnomalyAssessment; // "NOT_DETECTED", "POSSIBLE_ANOMALIES"

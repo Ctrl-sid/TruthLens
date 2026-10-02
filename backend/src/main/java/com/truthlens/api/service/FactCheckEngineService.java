@@ -329,29 +329,29 @@ public class FactCheckEngineService {
         int evidenceCompleteness = calculateEvidenceCompleteness(decomposedSubClaims);
 
         // 11. Core Support Score Calculation & Contradiction Severity Assessment
-        SupportScoreCalculationResult scoreResult = calculateSupportScoreDetailed(contentToAnalyze, nlpResults, imageAnalysis, corpusMatch, externalFact, domainSource, decomposedSubClaims);
-        int score = scoreResult.getFinalSupportScore();
-        int baseScore = scoreResult.getBaseSupportScore();
-        int penalty = scoreResult.getContradictionPenalty();
-
         String contradictionSeverity = determineContradictionSeverity(contentToAnalyze, externalFact, corpusMatch, decomposedSubClaims);
         String distortionType = determineDistortionType(externalFact, contradictionSeverity);
         String asOfStatus = determineAsOfStatus(contentToAnalyze, externalFact, decomposedSubClaims);
+
+        // 12. Build Authentic Source Citations & Clusters (needed for cluster-based Base Score calculation)
+        List<SourceEvidence> sources = buildSourceCitations(contentToAnalyze, 50, corpusMatch, externalFact, domainSource);
+        List<EvidenceCluster> evidenceClusters = externalFact.map(ExternalFactCheckService.ExternalFactResult::getEvidenceClusters)
+                .filter(c -> !c.isEmpty())
+                .orElseGet(() -> buildDefaultClusters(sources, false));
+
+        SupportScoreCalculationResult scoreResult = calculateSupportScoreDetailed(contentToAnalyze, nlpResults, imageAnalysis, corpusMatch, externalFact, domainSource, decomposedSubClaims, evidenceClusters, contradictionSeverity);
+        int score = scoreResult.getFinalSupportScore();
+        int baseScore = scoreResult.getBaseSupportScore();
+        int penalty = scoreResult.getContradictionPenalty();
 
         String verdict = determineVerdict(score, externalFact, corpusMatch, contradictionSeverity, decomposedSubClaims, asOfStatus);
         String verdictBadgeColor = getVerdictBadgeColor(verdict, score);
         int confidenceScore = calculateConfidenceScore(corpusMatch, externalFact, decomposedSubClaims);
         String confidenceLevel = confidenceScore >= 75 ? "HIGH" : (confidenceScore >= 45 ? "MEDIUM" : "LOW");
 
-        // 12. Generate Rationale & Key Reasons
+        // 13. Generate Rationale & Key Reasons
         List<String> keyReasons = generateKeyReasons(contentToAnalyze, nlpResults, score, imageAnalysis, corpusMatch, externalFact, domainSource, contradictionSeverity, evidenceCompleteness, distortionType);
         String rationale = buildRationaleText(contentToAnalyze, score, verdict, nlpResults, corpusMatch, externalFact, domainSource, contradictionSeverity, evidenceCompleteness);
-
-        // 13. Build Authentic Source Citations & Clusters
-        List<SourceEvidence> sources = buildSourceCitations(contentToAnalyze, score, corpusMatch, externalFact, domainSource);
-        List<EvidenceCluster> evidenceClusters = externalFact.map(ExternalFactCheckService.ExternalFactResult::getEvidenceClusters)
-                .filter(c -> !c.isEmpty())
-                .orElseGet(() -> buildDefaultClusters(sources, score < 40));
 
         // 14. Build Retrieval Audit Trail & Retrieval Quality Diagnostics
         RetrievalAudit retrievalAudit = externalFact.map(ExternalFactCheckService.ExternalFactResult::getRetrievalAudit)
@@ -361,10 +361,22 @@ public class FactCheckEngineService {
         // 15. Build Claim Origin & Provenance Discovery (Earliest Verified Source Found)
         ClaimOriginDiscovery originDiscovery = buildClaimOriginDiscovery(contentToAnalyze, score, verdict, corpusMatch, externalFact, domainSource, contradictionSeverity, distortionType);
 
-        // 16. Build Structured Explainability Profile & Matrix
-        ExplainabilityProfile explainability = buildExplainabilityProfile(contentToAnalyze, baseScore, penalty, score, verdict, confidenceLevel, confidenceScore, evidenceCompleteness, asOfStatus, distortionType, sources, evidenceClusters, externalFact, corpusMatch, contradictionSeverity, retrievalAudit, retrievalQuality);
+        // 16. Single-Source Government Notice
+        String singleSourceGovNotice = null;
+        if (evidenceClusters != null && evidenceClusters.size() == 1 && evidenceClusters.get(0).isPrimaryAuthority()) {
+            singleSourceGovNotice = "Verified based on a single authoritative government source (" + evidenceClusters.get(0).getPrimaryOutlet() + "). Independent corroboration is recommended.";
+        }
 
-        // 17. Decouple Content Diagnostics / Sensationalism
+        // 17. Social Virality Info (Tier 5 isolation)
+        SocialViralityInfo socialVirality = buildSocialViralityInfo(sources);
+
+        // 18. Modality Decision Combination Matrix
+        String modalityDecision = determineModalityDecision(imageAnalysis, verdict);
+
+        // 19. Build Structured Explainability Profile & Matrix
+        ExplainabilityProfile explainability = buildExplainabilityProfile(contentToAnalyze, baseScore, penalty, score, verdict, confidenceLevel, confidenceScore, evidenceCompleteness, asOfStatus, distortionType, sources, evidenceClusters, externalFact, corpusMatch, contradictionSeverity, retrievalAudit, retrievalQuality, singleSourceGovNotice);
+
+        // 20. Decouple Content Diagnostics / Sensationalism
         ContentCharacteristics contentDiagnostics = buildContentDiagnostics(nlpResults);
 
         String summary = nlpResults.getExtractedEntities().isEmpty() ?
@@ -373,11 +385,16 @@ public class FactCheckEngineService {
 
         long resultId = System.currentTimeMillis();
 
-        // 18. Build Verification Pipeline Steps Trace (10-Stage Pipeline)
+        // 21. Build Verification Pipeline Steps Trace (10-Stage Pipeline)
         String finalInputType = request.getType() != null ? request.getType().toUpperCase() : "TEXT";
         List<PipelineStep> steps = buildPipelineSteps(finalInputType, imageAnalysis, validation, decomposedSubClaims, evidenceClusters, verdict, false);
 
-        // 19. Persist verified claim to database if repository is available
+        // 22. Staleness & Freshness Tracking
+        boolean isDevelopingOrBreaking = contentToAnalyze.toLowerCase().contains("breaking") || contentToAnalyze.toLowerCase().contains("live") || contentToAnalyze.toLowerCase().contains("initial reports");
+        String asOfTimestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        int staleAfterDays = isDevelopingOrBreaking ? 3 : 14;
+
+        // 23. Persist verified claim to database if repository is available
         if (historyRepository != null) {
             try {
                 User authUser = null;
@@ -456,9 +473,15 @@ public class FactCheckEngineService {
                 .originDiscovery(originDiscovery)
                 .nlpAnalysis(nlpResults)
                 .imageAnalysis(imageAnalysis)
-                .timestamp(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
-                .algorithmVersion("3.0")
-                .scoringVersion("3.0")
+                .singleSourceGovNotice(singleSourceGovNotice)
+                .socialVirality(socialVirality)
+                .modalityDecision(modalityDecision)
+                .isStale(false)
+                .asOfTimestamp(asOfTimestamp)
+                .staleAfterDays(staleAfterDays)
+                .timestamp(asOfTimestamp)
+                .algorithmVersion("3.2")
+                .scoringVersion("3.2")
                 .build();
     }
 
@@ -610,7 +633,7 @@ public class FactCheckEngineService {
                                       Optional<ExternalFactCheckService.ExternalFactResult> externalFact,
                                       VerifiedSource domainSource,
                                       List<DecomposedClaim> subClaims) {
-        return calculateSupportScoreDetailed(text, nlp, imageAnalysis, match, externalFact, domainSource, subClaims).getFinalSupportScore();
+        return calculateSupportScoreDetailed(text, nlp, imageAnalysis, match, externalFact, domainSource, subClaims, List.of(), "NONE").getFinalSupportScore();
     }
 
     private SupportScoreCalculationResult calculateSupportScoreDetailed(
@@ -619,7 +642,9 @@ public class FactCheckEngineService {
             MatchResult match,
             Optional<ExternalFactCheckService.ExternalFactResult> externalFact,
             VerifiedSource domainSource,
-            List<DecomposedClaim> subClaims
+            List<DecomposedClaim> subClaims,
+            List<EvidenceCluster> evidenceClusters,
+            String contradictionSeverity
     ) {
         if (checkDemographicAnomaly(text).isPresent()) {
             return new SupportScoreCalculationResult(20, 75, 5);
@@ -627,96 +652,90 @@ public class FactCheckEngineService {
         double verifiedSim = match != null ? match.getVerifiedSimilarity() : 0.0;
         double debunkedSim = match != null ? match.getDebunkedSimilarity() : 0.0;
 
-        // 1. Determine Contradiction Penalty
-        int penalty = 0;
-        if (externalFact.isPresent() && externalFact.get().isContradiction()) {
-            String severity = externalFact.get().getContradictionSeverity();
-            if ("MINOR_DISCREPANCY".equals(severity)) {
-                penalty = 20;
-            } else if ("MODERATE_CONTRADICTION".equals(severity)) {
-                penalty = 40;
-            } else if ("MAJOR_CONTRADICTION".equals(severity)) {
-                penalty = 60;
+        // 1. Calculate Deterministic Base Support Score from Evidence Clusters:
+        // Base Score = min(100, sum(Tier_Weight * Stance_Multiplier * Relevance))
+        int calculatedBase = 0;
+        int supportingClusterCount = 0;
+
+        if (evidenceClusters != null && !evidenceClusters.isEmpty()) {
+            for (EvidenceCluster cluster : evidenceClusters) {
+                // Tier 5 is strictly 0 contribution
+                if ("LEVEL_5_USER_GENERATED".equals(cluster.getEvidenceTier())) {
+                    continue;
+                }
+
+                int tierWeight = 30; // Level 2 Default
+                if ("LEVEL_1_PRIMARY".equals(cluster.getEvidenceTier()) || cluster.isPrimaryAuthority()) {
+                    tierWeight = 35;
+                } else if ("LEVEL_2_SECONDARY".equals(cluster.getEvidenceTier())) {
+                    tierWeight = 30;
+                } else if ("LEVEL_3_FACTCHECK".equals(cluster.getEvidenceTier())) {
+                    tierWeight = 20;
+                } else if ("LEVEL_4_REFERENCE".equals(cluster.getEvidenceTier())) {
+                    tierWeight = 10;
+                }
+
+                double stanceMultiplier = 0.0;
+                String stance = cluster.getConsensusStance();
+                if ("CONFIRMED".equalsIgnoreCase(stance)) {
+                    stanceMultiplier = 1.0;
+                    supportingClusterCount++;
+                } else if ("SUPPORTED".equalsIgnoreCase(stance)) {
+                    stanceMultiplier = 0.85;
+                    supportingClusterCount++;
+                } else if ("ARTICLE_REPORTS_CLAIM".equalsIgnoreCase(stance)) {
+                    stanceMultiplier = 0.40;
+                    supportingClusterCount++;
+                } else if ("PARTIALLY_SUPPORTED".equalsIgnoreCase(stance)) {
+                    stanceMultiplier = 0.50;
+                    supportingClusterCount++;
+                }
+
+                double relevance = 1.0;
+                int clusterPts = (int) Math.round(tierWeight * stanceMultiplier * relevance);
+                calculatedBase += clusterPts;
+            }
+            calculatedBase = Math.min(100, calculatedBase);
+        }
+
+        // Fallback Base Score when no structured clusters exist
+        if (calculatedBase == 0) {
+            boolean isVerifiedCompatible = isEntityCompatible(nlp, match != null ? match.getBestVerifiedEntry() : null, text);
+            if (externalFact.isPresent() && externalFact.get().isAuthenticCorroboration()) {
+                calculatedBase = 90;
+                supportingClusterCount = 1;
+            } else if (verifiedSim >= 0.45 && isVerifiedCompatible && verifiedSim > debunkedSim) {
+                calculatedBase = 88;
+                supportingClusterCount = 1;
+            } else if (domainSource != null && domainSource.getCredibilityScore() >= 90) {
+                calculatedBase = 80;
+                supportingClusterCount = 1;
+            } else if (debunkedSim >= 0.45 && debunkedSim >= verifiedSim) {
+                calculatedBase = 15;
             } else {
-                penalty = 80; // DIRECT_FACTUAL_REVERSAL
+                calculatedBase = 50; // Neutral baseline for unverified
             }
-        } else if (match != null && match.getBestVerifiedEntry() != null && match.getVerifiedSimilarity() >= 0.35) {
-            ExternalFactCheckService.ContradictionCheck corpusContradiction = checkContradictionSafely(text, match.getBestVerifiedEntry().getText());
-            if (corpusContradiction != null && corpusContradiction.isContradicted()) {
-                String severity = corpusContradiction.getSeverity();
-                penalty = "MINOR_DISCREPANCY".equals(severity) ? 20 : ("MODERATE_CONTRADICTION".equals(severity) ? 40 : 80);
-            }
-        } else if (debunkedSim >= 0.45 && debunkedSim >= verifiedSim) {
-            penalty = 80;
         }
 
-        // 2. Determine Normalized Base Support Score
-        // Base = 0.25*source_support + 0.20*independent_support + 0.15*semantic_match + 0.15*source_authority + 0.10*geographic_relevance + 0.05*temporal_relevance + 0.10*directness
-        double sourceSupport = 50.0;
-        double independentSupport = 40.0;
-        double semanticMatch = 50.0;
-        double sourceAuthority = 50.0;
-        double geoRelevance = 80.0;
-        double temporalRelevance = 80.0;
-        double directness = 75.0;
+        int baseScore = calculatedBase;
 
-        boolean isVerifiedCompatible = isEntityCompatible(nlp, match != null ? match.getBestVerifiedEntry() : null, text);
-
-        if (externalFact.isPresent()) {
-            ExternalFactCheckService.ExternalFactResult fact = externalFact.get();
-            if (fact.isAuthenticCorroboration()) {
-                sourceSupport = 96.0;
-                int clusters = fact.getEvidenceClusters() != null ? fact.getEvidenceClusters().size() : 1;
-                independentSupport = Math.min(100.0, 60.0 + (clusters * 20.0));
-                semanticMatch = 94.0;
-                sourceAuthority = fact.getCredibilityScore() > 0 ? fact.getCredibilityScore() : 95.0;
-                geoRelevance = 95.0;
-                temporalRelevance = 95.0;
-                directness = 90.0;
-            } else if (fact.isContradiction()) {
-                sourceSupport = 20.0;
-                independentSupport = 85.0; // High confidence in contradicting clusters
-                semanticMatch = 90.0;
-                sourceAuthority = fact.getCredibilityScore() > 0 ? fact.getCredibilityScore() : 95.0;
-                geoRelevance = 95.0;
-                temporalRelevance = 95.0;
-                directness = 90.0;
-            }
-        } else if (verifiedSim >= 0.45 && isVerifiedCompatible && verifiedSim > debunkedSim) {
-            sourceSupport = 92.0;
-            independentSupport = 85.0;
-            semanticMatch = Math.min(100.0, verifiedSim * 115.0);
-            sourceAuthority = 94.0;
-            geoRelevance = 85.0;
-            temporalRelevance = 85.0;
-            directness = 85.0;
+        // 2. Calculate Contradiction Penalty with Corroboration Scaling:
+        // Scaled Penalty = Raw Penalty * (1 / (1 + 0.15 * (Supporting_Clusters - 1)))
+        int rawPenalty = 0;
+        if ("DIRECT_FACTUAL_REVERSAL".equals(contradictionSeverity)) {
+            rawPenalty = 80;
+        } else if ("MAJOR_CONTRADICTION".equals(contradictionSeverity)) {
+            rawPenalty = 60;
+        } else if ("MODERATE_CONTRADICTION".equals(contradictionSeverity)) {
+            rawPenalty = 40;
+        } else if ("MINOR_DISCREPANCY".equals(contradictionSeverity)) {
+            rawPenalty = 20;
         } else if (debunkedSim >= 0.45 && debunkedSim >= verifiedSim) {
-            sourceSupport = 10.0;
-            independentSupport = 90.0;
-            semanticMatch = Math.min(100.0, debunkedSim * 115.0);
-            sourceAuthority = 96.0;
-            geoRelevance = 85.0;
-            temporalRelevance = 85.0;
-            directness = 90.0;
-        } else if (domainSource != null && domainSource.getCredibilityScore() >= 90) {
-            sourceSupport = domainSource.getCredibilityScore();
-            independentSupport = 75.0;
-            semanticMatch = 85.0;
-            sourceAuthority = domainSource.getCredibilityScore();
-            geoRelevance = 85.0;
-            temporalRelevance = 85.0;
-            directness = 85.0;
+            rawPenalty = 80;
         }
 
-        double calculatedBase = (0.25 * sourceSupport)
-                + (0.20 * independentSupport)
-                + (0.15 * semanticMatch)
-                + (0.15 * sourceAuthority)
-                + (0.10 * geoRelevance)
-                + (0.05 * temporalRelevance)
-                + (0.10 * directness);
-
-        int baseScore = (int) Math.round(calculatedBase);
+        double penaltyScale = 1.0 / (1.0 + (0.15 * Math.max(0, supportingClusterCount - 1)));
+        int penalty = (int) Math.round(rawPenalty * penaltyScale);
 
         // If multiple sub-claims, aggregate with centrality weights
         if (subClaims != null && subClaims.size() > 1) {
@@ -764,6 +783,63 @@ public class FactCheckEngineService {
         }
 
         return new SupportScoreCalculationResult(baseScore, penalty, finalScore);
+    }
+
+    private String determineModalityDecision(ClaimVerificationResponse.ImageIntegrityAnalysis img, String verdict) {
+        if (img == null) return "TEXT_MODALITY_EVALUATED";
+
+        String aiLikelihood = img.getAiGenerationLikelihood();
+        boolean isAiGenerated = "HIGH".equalsIgnoreCase(aiLikelihood) || "PROBABLE_AI_GENERATED".equalsIgnoreCase(aiLikelihood);
+        boolean isTampered = img.getManipulationProbability() > 70.0;
+
+        String imageModalityStatus = isAiGenerated ? "SYNTHETIC_MEDIA" : (isTampered ? "TAMPERED_MEDIA" : "AUTHENTIC_MEDIA");
+
+        boolean isVerifiedClaim = verdict != null && (verdict.contains("VERIFIED") || verdict.contains("MOSTLY SUPPORTED"));
+        boolean isContradictedClaim = verdict != null && (verdict.contains("CONTRADICTED") || verdict.contains("FABRICATED") || verdict.contains("HOAX"));
+
+        if ("AUTHENTIC_MEDIA".equals(imageModalityStatus)) {
+            if (isVerifiedClaim) return "AUTHENTIC_MEDIA_VERIFIED_CLAIM";
+            if (isContradictedClaim) return "MISLEADING_CONTEXT_FALSE_ATTRIBUTION"; // Authentic Photo, False Caption / Misattribution
+            return "AUTHENTIC_MEDIA_UNVERIFIED_CONTEXT";
+        } else if ("SYNTHETIC_MEDIA".equals(imageModalityStatus)) {
+            if (isVerifiedClaim) return "SYNTHETIC_MEDIA_AUTHENTIC_EVENT"; // AI Generated Image of Real Event
+            return "FABRICATED_MEDIA_CONTRADICTED_CLAIM"; // AI Generated Image + False Claim
+        } else {
+            if (isVerifiedClaim) return "TAMPERED_MEDIA_AUTHENTIC_EVENT";
+            return "FABRICATED_MEDIA_CONTRADICTED_CLAIM";
+        }
+    }
+
+    private SocialViralityInfo buildSocialViralityInfo(List<SourceEvidence> sources) {
+        if (sources == null || sources.isEmpty()) {
+            return SocialViralityInfo.builder()
+                    .socialPostCount(0)
+                    .viralityLevel("LOW")
+                    .socialContextSummary("No anomalous social media virality or UGC amplification detected.")
+                    .platformDistribution(List.of())
+                    .build();
+        }
+
+        List<SourceEvidence> ugc = sources.stream()
+                .filter(s -> "LEVEL_5_USER_GENERATED".equals(s.getEvidenceTier()))
+                .collect(Collectors.toList());
+
+        if (ugc.isEmpty()) {
+            return SocialViralityInfo.builder()
+                    .socialPostCount(0)
+                    .viralityLevel("LOW")
+                    .socialContextSummary("Evidence derived exclusively from accredited news wires and primary sources.")
+                    .platformDistribution(List.of())
+                    .build();
+        }
+
+        List<String> platforms = ugc.stream().map(SourceEvidence::getSourceName).distinct().collect(Collectors.toList());
+        return SocialViralityInfo.builder()
+                .socialPostCount(ugc.size())
+                .viralityLevel(ugc.size() > 3 ? "HIGH" : "MEDIUM")
+                .socialContextSummary("Identified " + ugc.size() + " social media discussions across " + String.join(", ", platforms) + ". Social signals are isolated from truth scores.")
+                .platformDistribution(platforms)
+                .build();
     }
 
     private String determineVerdict(int score, Optional<ExternalFactCheckService.ExternalFactResult> externalFact,
@@ -842,12 +918,14 @@ public class FactCheckEngineService {
                                                             MatchResult match,
                                                             String contradictionSeverity,
                                                             RetrievalAudit retrievalAudit,
-                                                            RetrievalQuality retrievalQuality) {
+                                                            RetrievalQuality retrievalQuality,
+                                                            String singleSourceGovNotice) {
 
         List<String> positive = new ArrayList<>();
         List<String> warning = new ArrayList<>();
         List<String> diffs = new ArrayList<>();
         List<EvidenceItemSummary> matrix = new ArrayList<>();
+        List<ClusterContribution> clusterContributions = new ArrayList<>();
 
         boolean isContradicted = !"NONE".equals(contradictionSeverity);
 
@@ -857,6 +935,34 @@ public class FactCheckEngineService {
             } else if (isContradicted) {
                 warning.add("Contradicted across " + clusters.size() + " independent evidence cluster" + (clusters.size() > 1 ? "s" : "") + ".");
             }
+
+            for (EvidenceCluster cluster : clusters) {
+                if ("LEVEL_5_USER_GENERATED".equals(cluster.getEvidenceTier())) continue;
+
+                int weight = "LEVEL_1_PRIMARY".equals(cluster.getEvidenceTier()) || cluster.isPrimaryAuthority() ? 35 :
+                             ("LEVEL_2_SECONDARY".equals(cluster.getEvidenceTier()) ? 30 :
+                             ("LEVEL_3_FACTCHECK".equals(cluster.getEvidenceTier()) ? 20 : 10));
+
+                double multiplier = "CONFIRMED".equalsIgnoreCase(cluster.getConsensusStance()) ? 1.0 :
+                                    ("SUPPORTED".equalsIgnoreCase(cluster.getConsensusStance()) ? 0.85 :
+                                    ("ARTICLE_REPORTS_CLAIM".equalsIgnoreCase(cluster.getConsensusStance()) ? 0.40 :
+                                    ("PARTIALLY_SUPPORTED".equalsIgnoreCase(cluster.getConsensusStance()) ? 0.50 : 0.0)));
+
+                int pts = (int) Math.round(weight * multiplier * 1.0);
+                clusterContributions.add(ClusterContribution.builder()
+                        .clusterId(cluster.getClusterId())
+                        .primaryOutlet(cluster.getPrimaryOutlet())
+                        .evidenceTier(cluster.getEvidenceTier())
+                        .stance(cluster.getConsensusStance())
+                        .relevanceScore(1.0)
+                        .pointContribution(pts)
+                        .justification(cluster.getPrimaryOutlet() + " (" + cluster.getEvidenceTier().replace("LEVEL_", "Level ") + "): " + weight + " pts \u00D7 " + multiplier + " (" + cluster.getConsensusStance() + ") = " + pts + " pts")
+                        .build());
+            }
+        }
+
+        if (singleSourceGovNotice != null) {
+            warning.add(singleSourceGovNotice);
         }
 
         if (externalFact.isPresent()) {
@@ -902,6 +1008,10 @@ public class FactCheckEngineService {
                 .finalSupportScore(finalSupportScore)
                 .asOfStatus(asOfStatus)
                 .distortionType(distortionType)
+                .baseScoreFormula("Base Score = min(100, \u2211 [W(Tier_i) \u00D7 S(Stance_i) \u00D7 R_i])")
+                .penaltyScalingFormula("Effective Penalty = Raw Penalty \u00D7 [1 / (1 + 0.15 \u00D7 (Clusters - 1))]")
+                .singleSourceGovNotice(singleSourceGovNotice)
+                .perClusterContributions(clusterContributions)
                 .positiveChecklist(positive)
                 .warningChecklist(warning)
                 .detectedDifferences(diffs)
