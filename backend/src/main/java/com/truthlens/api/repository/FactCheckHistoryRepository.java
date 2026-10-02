@@ -11,4 +11,5 @@ import java.util.List;
 public interface FactCheckHistoryRepository extends JpaRepository<FactCheckHistory, Long> {
     List<FactCheckHistory> findByUserOrderByCreatedAtDesc(User user);
     List<FactCheckHistory> findTop10ByOrderByCreatedAtDesc();
+    void deleteByUser(User user);
 }
