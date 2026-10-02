@@ -1,0 +1,124 @@
+[
+  {
+    "id": "TC001",
+    "input": "India dispatched humanitarian aid and disaster relief materials to Nepal following flash floods.",
+    "type": "FACTUAL_CLAIM",
+    "expectedVerifiable": true,
+    "expectedVerdictCategory": "VERIFIED",
+    "expectedScoreMin": 70,
+    "description": "True factual claim corroborated by news wires"
+  },
+  {
+    "id": "TC002",
+    "input": "NASA James Webb Space Telescope captured deep field image of galaxy cluster SMACS 0723.",
+    "type": "FACTUAL_CLAIM",
+    "expectedVerifiable": true,
+    "expectedVerdictCategory": "VERIFIED",
+    "expectedScoreMin": 70,
+    "description": "Scientific discovery claim corroborated by agency archives"
+  },
+  {
+    "id": "TC003",
+    "input": "Zero casualties were reported in the severe 2024 Nepal flash floods.",
+    "type": "FACTUAL_CLAIM",
+    "expectedVerifiable": true,
+    "expectedVerdictCategory": "CONTRADICTED",
+    "expectedScoreMax": 40,
+    "description": "Direct polarity reversal / zero casualty falsehood"
+  },
+  {
+    "id": "TC004",
+    "input": "Over 500 billion people are currently living on planet Earth.",
+    "type": "FACTUAL_CLAIM",
+    "expectedVerifiable": true,
+    "expectedVerdictCategory": "CONTRADICTED",
+    "expectedScoreMax": 20,
+    "description": "Demographic impossibility / extreme numerical falsehood"
+  },
+  {
+    "id": "TC005",
+    "input": "WHO approved turmeric as a 100% cure for cancer.",
+    "type": "FACTUAL_CLAIM",
+    "expectedVerifiable": true,
+    "expectedVerdictCategory": "CONTRADICTED",
+    "expectedScoreMax": 30,
+    "description": "Medical miracle cure hoax"
+  },
+  {
+    "id": "TC006",
+    "input": "what should i do",
+    "type": "QUESTION",
+    "expectedVerifiable": false,
+    "expectedVerdictCategory": "NON-VERIFIABLE",
+    "expectedScoreMin": null,
+    "expectedScoreMax": null,
+    "description": "Open-ended conversational query (CRITICAL ANTI-HALLUCINATION TEST)"
+  },
+  {
+    "id": "TC007",
+    "input": "what is the capital of france",
+    "type": "QUESTION",
+    "expectedVerifiable": false,
+    "expectedVerdictCategory": "NON-VERIFIABLE",
+    "expectedScoreMin": null,
+    "expectedScoreMax": null,
+    "description": "Knowledge lookup question"
+  },
+  {
+    "id": "TC008",
+    "input": "fake news",
+    "type": "FRAGMENT",
+    "expectedVerifiable": false,
+    "expectedVerdictCategory": "NON-VERIFIABLE",
+    "expectedScoreMin": null,
+    "expectedScoreMax": null,
+    "description": "Short lexical fragment without subject/predicate"
+  },
+  {
+    "id": "TC009",
+    "input": "Please pray for the families affected by flooding in North Carolina and Tennessee.",
+    "type": "REQUEST",
+    "expectedVerifiable": false,
+    "expectedVerdictCategory": "NON-VERIFIABLE",
+    "expectedScoreMin": null,
+    "expectedScoreMax": null,
+    "description": "Non-declarative social media prayer appeal"
+  },
+  {
+    "id": "TC010",
+    "input": "I believe that solar energy is the most beautiful source of power in the universe.",
+    "type": "OPINION",
+    "expectedVerifiable": false,
+    "expectedVerdictCategory": "NON-VERIFIABLE",
+    "expectedScoreMin": null,
+    "expectedScoreMax": null,
+    "description": "Subjective opinion/belief"
+  },
+  {
+    "id": "TC011",
+    "input": "Is it true that India dispatched relief materials to Nepal?",
+    "type": "QUESTION",
+    "expectedVerifiable": true,
+    "extractedClaim": "India dispatched relief materials to Nepal",
+    "expectedVerdictCategory": "VERIFIED",
+    "expectedScoreMin": 70,
+    "description": "Compound conversational query with extractable declarative proposition"
+  },
+  {
+    "id": "TC012",
+    "input": "I heard 50 people died in the flood, is that true?",
+    "type": "QUESTION",
+    "expectedVerifiable": true,
+    "extractedClaim": "50 people died in the flood",
+    "expectedVerdictCategory": "EVALUATED",
+    "description": "Compound conversational query with embedded casualty assertion"
+  },
+  {
+    "id": "TC013",
+    "input": "Around 100 relief packages were delivered to the flood shelter.",
+    "type": "FACTUAL_CLAIM",
+    "expectedVerifiable": true,
+    "expectedVerdictCategory": "EVALUATED",
+    "description": "Approximate numerical range assertion"
+  }
+]
