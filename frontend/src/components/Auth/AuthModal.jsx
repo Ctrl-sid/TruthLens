@@ -7,6 +7,7 @@ export default function AuthModal({ show, onClose }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [dpdpConsent, setDpdpConsent] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -17,6 +18,12 @@ export default function AuthModal({ show, onClose }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (isRegister && !dpdpConsent) {
+      setError('Please acknowledge the DPDP Act 2023 data processing consent before creating an account.');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -127,6 +134,22 @@ export default function AuthModal({ show, onClose }) {
                   required
                 />
               </div>
+
+              {isRegister && (
+                <div className="mb-3 form-check text-start">
+                  <input
+                    type="checkbox"
+                    className="form-check-input"
+                    id="dpdpConsentCheck"
+                    checked={dpdpConsent}
+                    onChange={(e) => setDpdpConsent(e.target.checked)}
+                    required
+                  />
+                  <label className="form-check-label small text-muted" htmlFor="dpdpConsentCheck" style={{ fontSize: '11px', lineHeight: '1.4' }}>
+                    I consent to TruthLens logging my verification queries and processing claim telemetry in compliance with the <strong>Digital Personal Data Protection (DPDP) Act 2023</strong>. I understand I can export or purge my verification history at any time.
+                  </label>
+                </div>
+              )}
             </div>
 
             <div className="modal-footer border-secondary d-flex justify-content-between">

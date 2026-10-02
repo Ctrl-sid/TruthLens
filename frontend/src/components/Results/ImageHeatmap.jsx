@@ -13,10 +13,13 @@ import {
   Info,
   AlertCircle,
   Eye,
-  Sliders
+  Sliders,
+  Sparkles,
+  Bot,
+  Grid
 } from 'lucide-react';
 
-export default function ImageHeatmap({ imageAnalysis, uploadedImage }) {
+export default function ImageHeatmap({ imageAnalysis, uploadedImage, modalityDecision }) {
   const [forensicFilter, setForensicFilter] = useState('ela'); // 'original', 'ela', 'compression'
 
   if (!imageAnalysis) return null;
@@ -40,10 +43,52 @@ export default function ImageHeatmap({ imageAnalysis, uploadedImage }) {
     exifStatus = 'Stripped by Platform (Neutral)',
     compressionAssessment = 'NORMAL',
     pixelAnomalyAssessment = 'NOT_DETECTED',
+    aiGenerationLikelihood = 'VERY_LOW',
+    aiDetectionScore = 8.0,
+    aiDetectionSignals = [],
     forensicDisclaimer = 'Forensic indicators do not independently establish that an image has been manipulated.',
     anomalyFlags = [],
     heatmapOverlayUrl
   } = imageAnalysis;
+
+  const effectiveModality = modalityDecision || imageAnalysis.modalityDecision;
+
+  const getModalityBadge = (mod) => {
+    switch (mod) {
+      case 'AUTHENTIC_MEDIA_VERIFIED_CLAIM':
+        return {
+          title: 'Authentic Media + Verified Claim',
+          desc: 'Visual photograph/screenshot is authentic and the accompanying text claim is corroborated by accredited news archives.',
+          color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+          icon: <ShieldCheck className="w-4 h-4 text-emerald-400" />
+        };
+      case 'MISLEADING_CONTEXT_FALSE_ATTRIBUTION':
+        return {
+          title: 'Authentic Media + Misleading Context (False Attribution)',
+          desc: 'Visual photograph is authentic, but it has been repurposed with misleading contextual captions or recycled from a different event.',
+          color: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+          icon: <AlertTriangle className="w-4 h-4 text-amber-400" />
+        };
+      case 'SYNTHETIC_MEDIA_AUTHENTIC_EVENT':
+        return {
+          title: 'Synthetic / AI Media + Authentic Event',
+          desc: 'Image exhibits synthetic diffusion or CGI manipulation artifacts, even though the underlying news event may have occurred.',
+          color: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
+          icon: <Bot className="w-4 h-4 text-purple-400" />
+        };
+      case 'FABRICATED_MEDIA_CONTRADICTED_CLAIM':
+        return {
+          title: 'Fabricated Media + Contradicted Claim (Complete Hoax)',
+          desc: 'Both the visual media (heavily manipulated or AI-generated) and the textual claim are demonstrably false or fabricated.',
+          color: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+          icon: <AlertCircle className="w-4 h-4 text-rose-400" />
+        };
+      default:
+        return null;
+    }
+  };
+
+  const modalityInfo = getModalityBadge(effectiveModality);
 
   const getQualityBadge = (level) => {
     switch (level?.toUpperCase()) {
@@ -99,6 +144,28 @@ export default function ImageHeatmap({ imageAnalysis, uploadedImage }) {
               "This image does not contain a sufficiently identifiable textual or factual claim (classified as a photograph or illustration). TruthLens cannot determine whether a news statement is genuine or fake from this image alone. Genuineness Score is N/A." :
               "TruthLens could not reliably extract a coherent news claim from this image due to high noise or corrupted OCR tokens. TruthLens strictly prevents inventing claims from unreadable text."}
           </p>
+        </div>
+      )}
+
+      {/* Cross-Modal Decision Synthesis Banner */}
+      {modalityInfo && (
+        <div className={`p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${modalityInfo.color}`}>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-black/30 shrink-0">
+              {modalityInfo.icon}
+            </div>
+            <div>
+              <div className="text-xs font-bold uppercase tracking-wider mb-0.5">
+                Cross-Modal Synthesis: {modalityInfo.title}
+              </div>
+              <p className="text-xs opacity-90 mb-0">
+                {modalityInfo.desc}
+              </p>
+            </div>
+          </div>
+          <span className="px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-black/40 border border-current shrink-0">
+            {effectiveModality}
+          </span>
         </div>
       )}
 
@@ -209,15 +276,6 @@ export default function ImageHeatmap({ imageAnalysis, uploadedImage }) {
               </span>
             </div>
             <div className="flex items-center justify-between pt-1 border-t border-slate-800">
-              <span className="text-slate-400">AI Generation Indicator:</span>
-              <span className={`font-semibold ${
-                imageAnalysis.aiGenerationIndicator === 'HIGH' ? 'text-amber-400' :
-                imageAnalysis.aiGenerationIndicator === 'LOW' ? 'text-emerald-400' : 'text-slate-300'
-              }`}>
-                {imageAnalysis.aiGenerationIndicator || 'INCONCLUSIVE'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between pt-1 border-t border-slate-800">
               <span className="text-slate-400">Compression Profile:</span>
               <span className="font-medium text-slate-200">{compressionAssessment}</span>
             </div>
@@ -225,6 +283,50 @@ export default function ImageHeatmap({ imageAnalysis, uploadedImage }) {
               <span className="text-slate-400">Pixel Inconsistencies:</span>
               <span className="font-medium text-slate-200">{pixelAnomalyAssessment}</span>
             </div>
+          </div>
+
+          {/* AI Synthetic / Diffusion Detection Box */}
+          <div className="p-3.5 rounded-xl bg-purple-950/20 border border-purple-500/30 space-y-2 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-purple-300 flex items-center gap-1.5 uppercase tracking-wider text-[11px]">
+                <Bot className="w-3.5 h-3.5 text-purple-400" />
+                AI Synthetic / Diffusion Detection
+              </span>
+              <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${
+                aiGenerationLikelihood === 'HIGH' || aiGenerationLikelihood === 'SYNTHETIC_DIFFUSION_LIKELY' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' :
+                aiGenerationLikelihood === 'MODERATE' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
+                'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+              }`}>
+                {aiGenerationLikelihood.replace(/_/g, ' ')}
+              </span>
+            </div>
+
+            <div className="space-y-1 pt-1">
+              <div className="flex justify-between text-[11px] text-slate-400">
+                <span>AI Synthetic Probability Score:</span>
+                <span className="font-mono font-bold text-purple-300">{aiDetectionScore}%</span>
+              </div>
+              <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                <div 
+                  className={`h-full transition-all duration-500 ${
+                    aiDetectionScore > 60 ? 'bg-rose-500' : aiDetectionScore > 30 ? 'bg-amber-500' : 'bg-emerald-500'
+                  }`}
+                  style={{ width: `${Math.min(100, Math.max(0, aiDetectionScore))}%` }}
+                />
+              </div>
+            </div>
+
+            {aiDetectionSignals && aiDetectionSignals.length > 0 && (
+              <div className="pt-2 border-t border-purple-500/20 space-y-1">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">Forensic Artifact Signals:</span>
+                {aiDetectionSignals.map((sig, idx) => (
+                  <div key={idx} className="flex items-center gap-1.5 text-[11px] text-slate-300">
+                    <span className="w-1 h-1 rounded-full bg-purple-400 shrink-0"></span>
+                    <span>{sig}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

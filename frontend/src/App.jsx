@@ -110,6 +110,26 @@ function AppContent() {
     }
   };
 
+  const handleExportHistory = async () => {
+    if (user && user.username) {
+      const exportData = await verifyService.exportHistory(user.username);
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `truthlens_data_export_${user.username}_${Date.now()}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
+  };
+
+  const handlePurgeAllHistory = async () => {
+    if (user && user.username) {
+      const updated = await verifyService.purgeAllHistory(user.username);
+      setHistory(updated);
+    }
+  };
+
   return (
     <div className="min-vh-100 d-flex flex-column bg-dark-slate">
       <Navbar
@@ -318,6 +338,7 @@ function AppContent() {
                     <ImageHeatmap 
                       imageAnalysis={result.imageAnalysis} 
                       uploadedImage={uploadedImagePreview || result.imageAnalysis?.heatmapOverlayUrl} 
+                      modalityDecision={result.modalityDecision}
                     />
                   )}
                 </div>
@@ -348,6 +369,8 @@ function AppContent() {
         onSelectHistoryItem={handleSelectHistoryItem}
         onDeleteHistoryItem={handleDeleteHistoryItem}
         onClearAllHistory={handleClearAllHistory}
+        onExportHistory={handleExportHistory}
+        onPurgeHistory={handlePurgeAllHistory}
       />
       <SourcesModal show={showSourcesModal} onClose={() => setShowSourcesModal(false)} />
 

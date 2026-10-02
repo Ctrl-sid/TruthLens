@@ -423,16 +423,28 @@ export default function ExplainabilityCard({ result }) {
         {/* 4. Base Support Score & Contradiction Penalty Breakdown */}
         {((result.baseSupportScore != null && result.contradictionPenalty != null) || (explainability.baseSupportScore != null && explainability.contradictionPenalty != null)) && (
           <div className="mt-4 p-4 rounded-xl bg-slate-950/70 border border-slate-700/60 shadow-lg space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800/80">
               <div className="flex items-center gap-2">
                 <Scale className="w-4 h-4 text-emerald-400" />
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
-                  Normalized Evidence Scoring & Contradiction Penalty Model
+                  Deterministic Evidence Scoring & Corroboration Penalty Model
                 </span>
               </div>
               <span className="text-xs font-mono font-bold text-sky-400">
-                Net Score = max(0, Base - Penalty)
+                Net Score = max(0, Base - Scaled Penalty)
               </span>
+            </div>
+
+            {/* Formula Transparency Box */}
+            <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800 space-y-1.5 text-xs font-mono">
+              <div className="flex items-center justify-between text-slate-300">
+                <span className="text-sky-400 font-bold">Base Score Formula:</span>
+                <span>{explainability.baseScoreFormula || "Base = min(100, \u2211 [W(Tier_i) \u00D7 S(Stance_i) \u00D7 R_i])"}</span>
+              </div>
+              <div className="flex items-center justify-between text-slate-300 pt-1 border-t border-slate-800/70">
+                <span className="text-rose-400 font-bold">Scaled Penalty Formula:</span>
+                <span>{explainability.penaltyScalingFormula || "Effective Penalty = Raw Penalty \u00D7 [1 / (1 + 0.15 \u00D7 (Clusters - 1))]"}</span>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -445,7 +457,7 @@ export default function ExplainabilityCard({ result }) {
               </div>
 
               <div className="p-3.5 rounded-lg bg-slate-900/80 border border-slate-800 text-center">
-                <span className="text-[11px] uppercase font-bold text-slate-400 block mb-1">Contradiction Penalty</span>
+                <span className="text-[11px] uppercase font-bold text-slate-400 block mb-1">Scaled Penalty</span>
                 <span className={`text-2xl font-mono font-bold ${(result.contradictionPenalty || explainability.contradictionPenalty || 0) > 0 ? 'text-rose-400' : 'text-slate-400'}`}>
                   -{(result.contradictionPenalty != null ? result.contradictionPenalty : explainability.contradictionPenalty) || 0} pts
                 </span>
@@ -462,6 +474,49 @@ export default function ExplainabilityCard({ result }) {
                 <span className="text-[10px] text-emerald-400/80 block mt-1">Calibrated Epistemic Rating</span>
               </div>
             </div>
+
+            {/* Per-Cluster Point Contribution List */}
+            {explainability.perClusterContributions && explainability.perClusterContributions.length > 0 && (
+              <div className="pt-2 border-t border-slate-800/80 space-y-2">
+                <span className="text-[11px] uppercase font-bold text-slate-400 block">
+                  Per-Cluster Score Contribution Breakdown:
+                </span>
+                <div className="space-y-1.5">
+                  {explainability.perClusterContributions.map((cluster, cIdx) => (
+                    <div key={cIdx} className="p-2 rounded bg-slate-900/60 border border-slate-800 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-cyan-400 font-bold">{cluster.clusterId}</span>
+                        <span className="font-semibold text-white">{cluster.primaryOutlet}</span>
+                        <span className="text-slate-500 text-[11px]">({cluster.evidenceTier?.replace(/LEVEL_/g, 'Level ')})</span>
+                      </div>
+                      <div className="flex items-center gap-3 font-mono">
+                        <span className="text-sky-300 font-semibold">{cluster.stance}</span>
+                        <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">+{cluster.pointContribution} pts</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Single-Source Government Warning */}
+            {(result.singleSourceGovNotice || explainability.singleSourceGovNotice) && (
+              <div className="p-3 rounded-lg bg-amber-950/40 border border-amber-500/40 flex items-center gap-2.5 text-xs text-amber-200">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>{result.singleSourceGovNotice || explainability.singleSourceGovNotice}</span>
+              </div>
+            )}
+
+            {/* Social Media Virality Isolation Notice */}
+            {result.socialVirality && result.socialVirality.socialPostCount > 0 && (
+              <div className="p-3 rounded-lg bg-purple-950/30 border border-purple-500/30 space-y-1 text-xs text-purple-200">
+                <div className="flex items-center justify-between font-bold">
+                  <span className="flex items-center gap-1.5"><Activity className="w-3.5 h-3.5 text-purple-400" /> Tier 5 Social Virality Index (Isolated from Scoring)</span>
+                  <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300">{result.socialVirality.viralityLevel}</span>
+                </div>
+                <p className="text-[11px] text-slate-300 mb-0">{result.socialVirality.socialContextSummary}</p>
+              </div>
+            )}
           </div>
         )}
 

@@ -55,6 +55,36 @@ export const verifyService = {
     const key = `truthlens_user_history_${username}`;
     localStorage.removeItem(key);
     return [];
+  },
+
+  exportHistory: async (username) => {
+    try {
+      const response = await api.get('/history/export');
+      return response.data;
+    } catch (err) {
+      const key = `truthlens_user_history_${username}`;
+      const data = JSON.parse(localStorage.getItem(key) || '[]');
+      return {
+        format: "TRUTHLENS_DPDP_EXPORT_V1",
+        exportTimestamp: new Date().toISOString(),
+        username: username || 'anonymous',
+        recordsCount: data.length,
+        records: data
+      };
+    }
+  },
+
+  purgeAllHistory: async (username) => {
+    try {
+      await api.delete('/history');
+    } catch (err) {
+      console.warn('Backend purge endpoint unreachable, purging local cache.');
+    }
+    if (username) {
+      const key = `truthlens_user_history_${username}`;
+      localStorage.removeItem(key);
+    }
+    return [];
   }
 };
 

@@ -1,6 +1,16 @@
 import React from 'react';
 
-export default function VerificationHistoryDrawer({ show, onClose, history, currentUser, onSelectHistoryItem, onDeleteHistoryItem, onClearAllHistory }) {
+export default function VerificationHistoryDrawer({ 
+  show, 
+  onClose, 
+  history, 
+  currentUser, 
+  onSelectHistoryItem, 
+  onDeleteHistoryItem, 
+  onClearAllHistory,
+  onExportHistory,
+  onPurgeHistory
+}) {
   if (!show) return null;
 
   return (
@@ -16,7 +26,7 @@ export default function VerificationHistoryDrawer({ show, onClose, history, curr
       <div className="offcanvas-body">
         {currentUser ? (
           <>
-            <div className="d-flex justify-content-between align-items-center mb-3 bg-dark bg-opacity-40 p-2.5 rounded border border-secondary border-opacity-25">
+            <div className="d-flex justify-content-between align-items-center mb-2 bg-dark bg-opacity-40 p-2.5 rounded border border-secondary border-opacity-25">
               <div className="d-flex align-items-center gap-1.5 small flex-wrap">
                 <span className="text-muted">History:</span>
                 <strong className="text-cyan font-monospace">@{currentUser.username}</strong>
@@ -33,19 +43,34 @@ export default function VerificationHistoryDrawer({ show, onClose, history, curr
                   {currentUser.status || 'ACTIVE'}
                 </span>
               </div>
-              {history && history.length > 0 && (
-                <button
-                  type="button"
-                  className="btn btn-outline-danger btn-sm py-0.5 px-2 text-danger border-danger border-opacity-30 rounded-pill small"
-                  onClick={() => {
-                    if (window.confirm('Clear all your saved search history?')) {
-                      onClearAllHistory();
-                    }
-                  }}
-                >
-                  Clear All
-                </button>
-              )}
+            </div>
+
+            {/* DPDP Act 2023 Data Controls Toolbar */}
+            <div className="d-flex items-center gap-2 mb-3">
+              <button
+                type="button"
+                className="btn btn-outline-cyan btn-sm flex-fill py-1 px-2 small d-flex align-items-center justify-content-center gap-1.5 rounded-pill"
+                onClick={onExportHistory}
+                title="Export your personal fact-check query log as DPDP-compliant JSON"
+              >
+                <i className="bi bi-download"></i>
+                <span>Export (JSON)</span>
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-outline-danger btn-sm py-1 px-2 small d-flex align-items-center justify-content-center gap-1.5 rounded-pill"
+                onClick={() => {
+                  if (window.confirm('DPDP Act 2023 Data Purge:\nAre you sure you want to PERMANENTLY delete all your fact-checking history and query telemetry? This cannot be undone.')) {
+                    if (onPurgeHistory) onPurgeHistory();
+                    else onClearAllHistory();
+                  }
+                }}
+                title="Permanently purge all verification records per DPDP Act 2023"
+              >
+                <i className="bi bi-shield-x"></i>
+                <span>Purge All</span>
+              </button>
             </div>
 
             {history && history.length > 0 ? (
