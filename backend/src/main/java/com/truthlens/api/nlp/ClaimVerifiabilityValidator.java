@@ -254,10 +254,7 @@ public class ClaimVerifiabilityValidator {
 
         // 8. Check for WHO organization vs Interrogative Questions
         boolean endsWithQuestion = trimmed.endsWith("?");
-        boolean isWhoOrgHeadline = (trimmed.startsWith("WHO ") || trimmed.startsWith("W.H.O. ")) && !endsWithQuestion &&
-                (lower.contains("approves") || lower.contains("declares") || lower.contains("publishes") || lower.contains("warns") ||
-                 lower.contains("reports") || lower.contains("confirms") || lower.contains("recommends") || lower.contains("states") ||
-                 lower.contains("guidelines") || lower.contains("vaccine") || lower.contains("health") || lower.contains("officially"));
+        boolean isWhoOrgHeadline = trimmed.matches("(?i)^(?:WHO|W\\.H\\.O\\.)\\s+(?:approved|approves|declares|declared|publishes|published|warns|warned|reports|reported|confirms|confirmed|recommends|recommended|states|stated|releases|released|issues|issued|guidelines|vaccine|health|officially).*") && !endsWithQuestion;
 
         if (isWhoOrgHeadline) {
             ClaimFingerprint fp = extractFingerprint(trimmed, "SCIENTIFIC_POLICY");
@@ -274,8 +271,26 @@ public class ClaimVerifiabilityValidator {
                     .build();
         }
 
-        // 9. Strict Question Detection (Wh-words, Modal verbs, Inversion, Question Marks)
-        // STRICT ANTI-HALLUCINATION RULE: Questions are NOT automatically rewritten to claims.
+        // 9. Compound Question Pre-Processing: Extract embedded factual propositions from conversational questions
+        String embeddedProposition = extractEmbeddedFactualProposition(trimmed);
+        if (embeddedProposition != null && !embeddedProposition.isBlank()) {
+            String claimType = determineClaimType(embeddedProposition);
+            ClaimFingerprint fp = extractFingerprint(embeddedProposition, claimType);
+            notes.add("Extracted core factual proposition from conversational question for verification.");
+            return ValidationResult.builder()
+                    .inputType(InputType.VERIFIABLE_CLAIM)
+                    .isVerifiableClaim(true)
+                    .claimDetected(true)
+                    .extractedFactualClaim(embeddedProposition)
+                    .claimType(claimType)
+                    .extractionConfidence(0.92)
+                    .verificationEligible(true)
+                    .fingerprint(fp)
+                    .advisoryNotes(notes)
+                    .build();
+        }
+
+        // 10. Strict Question Detection (Open-ended questions lacking an actionable proposition)
         boolean startsWithQuestionWord = QUESTION_START_PATTERN.matcher(trimmed).find();
         if (endsWithQuestion || startsWithQuestionWord) {
             notes.add("TruthLens verifies factual assertions, but this input is an open-ended or interrogative question and does not contain a declarative factual claim.");
@@ -288,7 +303,7 @@ public class ClaimVerifiabilityValidator {
                     .claimType(null)
                     .extractionConfidence(0.99)
                     .verificationEligible(false)
-                    .rejectionReason("The submitted text is a question and does not contain a specific factual assertion that can be verified")
+                    .rejectionReason("The submitted text is an open question and does not contain a specific factual assertion that can be verified")
                     .suggestedAction("Enter a declarative factual statement (e.g., 'India dispatched relief materials to Nepal.').")
                     .advisoryNotes(notes)
                     .build();
@@ -372,6 +387,37 @@ public class ClaimVerifiabilityValidator {
                 .eventType(eventType)
                 .time(time)
                 .build();
+    }
+
+    public String extractEmbeddedFactualProposition(String text) {
+        if (text == null) return null;
+        String t = text.trim();
+        String withoutQMark = t.replaceAll("[?!.]+$", "").trim();
+
+        // Pattern 1: "is it true that <claim>" / "can you verify if <claim>"
+        Matcher m1 = Pattern.compile("(?i)^(?:is it (?:true|real|fake|factual|confirmed|accurate) that|is this true that|verify if|can you (?:check|verify) if|please (?:check|verify) if|tell me if|i want to know if|does anyone know if|is there truth to the claim that|i heard (?:that)?|rumor that|they say that|did you know that)\\s+(.+)$").matcher(withoutQMark);
+        if (m1.find()) {
+            String cand = m1.group(1).trim();
+            if (hasFactualSubjectAndPredicate(cand)) return cand;
+        }
+
+        // Pattern 2: "<claim>, is that true?" / "<claim> - is this true?"
+        Matcher m2 = Pattern.compile("(?i)^(.+?)[,\\-–—]\\s*(?:is (?:that|this|it) (?:true|real|fake|confirmed|a hoax)|right|correct)\\s*\\??$").matcher(t);
+        if (m2.find()) {
+            String cand = m2.group(1).trim();
+            if (hasFactualSubjectAndPredicate(cand)) return cand;
+        }
+
+        return null;
+    }
+
+    private boolean hasFactualSubjectAndPredicate(String text) {
+        if (text == null || text.isBlank()) return false;
+        String[] w = text.split("\\s+");
+        if (w.length < 3) return false;
+        String lower = text.toLowerCase();
+        return lower.matches("(?i).*(?:killed|died|dispatched|withdrew|withdrawn|launched|approved|banned|discovered|relief|flood|earthquake|notes|currency|guidelines|vaccine|accident|million|crore|billion|percent|disaster|minister|police|hospital).*")
+                || (w.length >= 4 && !lower.startsWith("what ") && !lower.startsWith("why ") && !lower.startsWith("who "));
     }
 }
 

@@ -163,6 +163,14 @@ public class FactCheckingCorpus {
                 "Snopes: No Credible Astronomical Detection of Alien Fleet",
                 "Global astronomical observatories (NASA, ESA, JAXA, SETI) report no anomalous extraterrestrial armadas. Viral video posts rely on CGI animations.",
                 List.of("extraterrestrial", "alien", "fleet", "approaching", "earth", "invasion", "ufo"));
+
+        addEntry("HOAX-014",
+                "World Health Organization approved turmeric and herbal spices as a 100% cure for cancer and eliminated oncology treatments",
+                "Health Misinformation", true, "Debunked / False",
+                "WHO & Reuters Fact Check", "reuters.com", "https://www.reuters.com/fact-check/who-turmeric-cancer-cure/",
+                "Fact Check: WHO Did Not Approve Turmeric as Cancer Cure",
+                "The World Health Organization (WHO) and global oncological bodies have never approved turmeric or dietary spices as a substitute for cancer therapeutics or chemotherapy.",
+                List.of("who", "approved", "turmeric", "cure", "cancer", "herbal", "oncology", "100%"));
     }
 
     private void populateVerifiedFacts() {

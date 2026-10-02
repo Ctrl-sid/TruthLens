@@ -227,6 +227,17 @@ public class ExternalFactCheckService {
                     seenDomains.add(domain.toLowerCase());
                 }
 
+                // Detect wire agency syndication from title or source
+                String wireAgency = detectWireAgency(title, source, domain);
+                String clusterId;
+                if (wireAgency != null) {
+                    clusterId = "CLUSTER-SYNDICATE-" + wireAgency;
+                } else if (isDuplicateDomain) {
+                    clusterId = "CLUSTER-SYNDICATE-01";
+                } else {
+                    clusterId = "CLUSTER-WIRE-0" + (crossReferencedList.size() + 1);
+                }
+
                 String tier = determineEvidenceTier(source, domain);
                 String stance = itemContradiction.isContradicted() ? "REFUTED" : "SUPPORTED";
                 double independence = calculateIndependenceRating(source, domain);
@@ -235,17 +246,26 @@ public class ExternalFactCheckService {
                 String evidenceId = "E00" + (crossReferencedList.size() + 1);
                 String evidenceStatus = itemContradiction.isContradicted() ? "RELEVANT_REFUTATION" : "RELEVANT_SUPPORT";
                 double evidenceSupport = Math.round(claimRelevance * (itemContradiction.isContradicted() ? 10.0 : 90.0) * (cred / 100.0) * (independence / 100.0) * 10.0) / 10.0;
-                double evidenceContribution = itemContradiction.isContradicted() ? 0.0 : Math.round(claimRelevance * (cred / 100.0) * (independence / 100.0) * 100.0) / 100.0;
+                
+                // Tier 5 sources contribute 0.0 points to evidence
+                boolean isTier5 = "LEVEL_5_USER_GENERATED".equals(tier);
+                double evidenceContribution = (itemContradiction.isContradicted() || isTier5) ? 0.0 : Math.round(claimRelevance * (cred / 100.0) * (independence / 100.0) * 100.0) / 100.0;
                 String claimTypeComp = claimRelevance >= 0.80 ? "HIGH" : (claimRelevance >= 0.65 ? "MEDIUM" : "LOW");
                 boolean isGeoMatch = !geo.isBlank() && title.toLowerCase().contains(geo.toLowerCase());
 
                 List<String> acceptanceReasons = new ArrayList<>();
-                acceptanceReasons.add("Accredited news publisher (" + (source != null ? source : domain) + ")");
-                acceptanceReasons.add("Contemporaneous reporting with " + Math.round(claimRelevance * 100) + "% claim relevance");
-                if (isPrimaryRegionalAuthority(source, domain, geo)) {
-                    acceptanceReasons.add("Direct primary regional authority relevance");
+                if (isTier5) {
+                    acceptanceReasons.add("Social Media / UGC platform (strictly isolated for virality tracking; 0 contribution to support score)");
                 } else {
-                    acceptanceReasons.add("Secondary news reporting corroboration");
+                    acceptanceReasons.add("Accredited news publisher (" + (source != null ? source : domain) + ")");
+                    acceptanceReasons.add("Contemporaneous reporting with " + Math.round(claimRelevance * 100) + "% claim relevance");
+                    if (isPrimaryRegionalAuthority(source, domain, geo)) {
+                        acceptanceReasons.add("Direct primary regional authority relevance");
+                    } else if (wireAgency != null) {
+                        acceptanceReasons.add("Syndicated wire dispatch from " + wireAgency);
+                    } else {
+                        acceptanceReasons.add("Secondary news reporting corroboration");
+                    }
                 }
 
                 crossReferencedList.add(SourceEvidence.builder()
@@ -275,7 +295,7 @@ public class ExternalFactCheckService {
                         .directness(isPrimaryRegionalAuthority(source, domain, geo) ? "DIRECT_PRIMARY" : "SECONDARY_REPORTING")
                         .stance(stance)
                         .verdictBySource(itemContradiction.isContradicted() ? "Contradicted / False" : "Verified True")
-                        .clusterId(isDuplicateDomain ? "CLUSTER-SYNDICATE-01" : "CLUSTER-WIRE-0" + (crossReferencedList.size() + 1))
+                        .clusterId(clusterId)
                         .isPrimarySource(isPrimaryRegionalAuthority(source, domain, geo))
                         .acceptanceReasons(acceptanceReasons)
                         .build());
@@ -293,7 +313,7 @@ public class ExternalFactCheckService {
 
             String tier = determineEvidenceTier(bestSource, bestDomain);
 
-            // Group into Distinct Independent Evidence Clusters
+            // Group into Distinct Independent Evidence Clusters (Tier 5 strictly excluded)
             List<EvidenceCluster> clusters = buildEvidenceClusters(crossReferencedList, isContradicted);
 
             String claimIntegrity = !isContradicted ? "AUTHENTIC_REPRODUCTION" :
@@ -364,6 +384,17 @@ public class ExternalFactCheckService {
         return Optional.empty();
     }
 
+    private String detectWireAgency(String title, String source, String domain) {
+        String combined = ((title != null ? title : "") + " " + (source != null ? source : "") + " " + (domain != null ? domain : "")).toUpperCase();
+        if (combined.contains("PTI") || combined.contains("PRESS TRUST OF INDIA")) return "PTI";
+        if (combined.contains("REUTERS")) return "REUTERS";
+        if (combined.contains("ASSOCIATED PRESS") || combined.contains("AP NEWS") || combined.matches(".*\\bAP\\b.*")) return "AP";
+        if (combined.contains("ANI") || combined.contains("ASIAN NEWS INTERNATIONAL")) return "ANI";
+        if (combined.contains("AFP") || combined.contains("AGENCE FRANCE-PRESSE")) return "AFP";
+        if (combined.contains("BLOOMBERG")) return "BLOOMBERG";
+        return null;
+    }
+
     private boolean isPrimaryRegionalAuthority(String source, String domain, String geo) {
         if (source == null && domain == null) return false;
         String s = (source != null ? source.toLowerCase() : "");
@@ -375,8 +406,15 @@ public class ExternalFactCheckService {
         List<EvidenceCluster> clusters = new ArrayList<>();
         if (sources.isEmpty()) return clusters;
 
+        // Tier 5 sources are strictly excluded from evidence clusters
+        List<SourceEvidence> validSources = sources.stream()
+                .filter(s -> !"LEVEL_5_USER_GENERATED".equals(s.getEvidenceTier()))
+                .collect(Collectors.toList());
+
+        if (validSources.isEmpty()) return clusters;
+
         Map<String, List<SourceEvidence>> clusterMap = new LinkedHashMap<>();
-        for (SourceEvidence se : sources) {
+        for (SourceEvidence se : validSources) {
             String clusterId = se.getClusterId() != null ? se.getClusterId() : "CLUSTER-WIRE-01";
             clusterMap.computeIfAbsent(clusterId, k -> new ArrayList<>()).add(se);
         }
@@ -385,18 +423,30 @@ public class ExternalFactCheckService {
         for (Map.Entry<String, List<SourceEvidence>> entry : clusterMap.entrySet()) {
             List<SourceEvidence> group = entry.getValue();
             String primaryOutlet = group.get(0).getSourceName();
-            List<String> affiliated = group.stream().map(SourceEvidence::getSourceName).collect(Collectors.toList());
+            List<String> affiliated = group.stream().map(SourceEvidence::getSourceName).distinct().collect(Collectors.toList());
             boolean isPrimary = group.stream().anyMatch(SourceEvidence::isPrimarySource);
+            String clusterTier = isPrimary ? "LEVEL_1_PRIMARY" : group.get(0).getEvidenceTier();
+            if (clusterTier == null) clusterTier = "LEVEL_2_SECONDARY";
+
+            String theme;
+            if (isPrimary) {
+                theme = "Regional Primary Authority & Official Reports";
+            } else if (entry.getKey().startsWith("CLUSTER-SYNDICATE-")) {
+                String wire = entry.getKey().replace("CLUSTER-SYNDICATE-", "");
+                theme = "Wire Syndication Network (" + wire + " / " + affiliated.size() + " republishers)";
+            } else {
+                theme = "Accredited News Wire Reporting (" + primaryOutlet + ")";
+            }
 
             clusters.add(EvidenceCluster.builder()
                     .clusterId("C00" + clusterIdx)
-                    .clusterTheme(isPrimary ? "Regional Primary Authority & Official Reports" : "Accredited News Wire Reporting (" + primaryOutlet + ")")
+                    .clusterTheme(theme)
                     .primaryOutlet(primaryOutlet)
                     .affiliatedOutlets(affiliated)
                     .sourceCount(group.size())
                     .independenceRating(isPrimary ? 100.0 : (group.size() > 1 ? 85.0 : 70.0))
                     .consensusStance(isContradicted ? "REFUTED" : "CONFIRMED")
-                    .evidenceTier(isPrimary ? "LEVEL_1_PRIMARY" : "LEVEL_2_SECONDARY")
+                    .evidenceTier(clusterTier)
                     .isPrimaryAuthority(isPrimary)
                     .build());
             clusterIdx++;
@@ -461,7 +511,7 @@ public class ExternalFactCheckService {
                     "Attribution mismatch: claim attributes event to ESA, whereas reports indicate NASA.");
         }
 
-        // 4. Numerical Disparity on Extracted Quantifiers
+        // 4. Numerical Disparity on Extracted Quantifiers & Approximate Ranges
         Map<String, Integer> wordToNum = Map.ofEntries(
                 Map.entry("zero", 0), Map.entry("none", 0), Map.entry("nil", 0),
                 Map.entry("one", 1), Map.entry("two", 2), Map.entry("three", 3), Map.entry("four", 4),
@@ -476,9 +526,26 @@ public class ExternalFactCheckService {
         boolean isAtLeast = q.contains("at least") || q.contains("minimum of") || q.contains("more than") || q.contains("over ");
         boolean isUpTo = q.contains("up to") || q.contains("fewer than") || q.contains("less than") || q.contains("under ");
         boolean isExact = q.contains("exactly") || q.contains("precisely");
+        boolean isApprox = q.contains("around") || q.contains("approximately") || q.contains("about") || q.contains("roughly") || q.contains("nearly") || q.contains("close to");
 
         if (qNum != null && aNum != null) {
-            if (isAtLeast) {
+            if (isApprox) {
+                // Approximate range quantifier allows +/- 15% tolerance without penalty
+                double lowerBound = qNum * 0.85;
+                double upperBound = qNum * 1.15;
+                if (aNum >= Math.floor(lowerBound) && aNum <= Math.ceil(upperBound)) {
+                    return new ContradictionCheck(false, "NONE", "NONE", null);
+                } else {
+                    double deltaRatio = (double) Math.abs(qNum - aNum) / Math.max(qNum, aNum);
+                    if (deltaRatio <= 0.30) {
+                        return new ContradictionCheck(true, "MINOR_DISCREPANCY", "NUMERICAL_DISTORTION",
+                                "Claim asserts approximately " + qNum + ", but reporting indicates " + aNum + " (outside +/-15% tolerance).");
+                    } else {
+                        return new ContradictionCheck(true, "MAJOR_CONTRADICTION", "NUMERICAL_DISTORTION",
+                                "Claim asserts approximately " + qNum + ", whereas reporting confirms " + aNum + ".");
+                    }
+                }
+            } else if (isAtLeast) {
                 if (aNum >= qNum) {
                     return new ContradictionCheck(false, "NONE", "NONE", null);
                 } else {
