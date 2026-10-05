@@ -889,9 +889,11 @@ public class FactCheckEngineService {
 
     private String getVerdictBadgeColor(String verdict, int score) {
         if ("AUTHORITATIVE_PRIMARY_NOTICE / AWAITING_CORROBORATION".equals(verdict) || "AUTHORITATIVE_PRIMARY_NOTICE".equals(verdict)) return "#38BDF8"; // Sky Blue
-        if ("VERIFIED / STRONGLY SUPPORTED".equals(verdict) || "MOSTLY SUPPORTED".equals(verdict) || "VERIFIED GENUINE".equals(verdict) || "MOSTLY GENUINE".equals(verdict)) return "#10B981"; // Emerald Green
+        if ("VERIFIED / STRONGLY SUPPORTED".equals(verdict) || "VERIFIED GENUINE".equals(verdict) || "MOSTLY GENUINE".equals(verdict)) return "#10B981"; // Emerald Green
+        if ("LIKELY AUTHENTIC / PARTIALLY SUPPORTED".equals(verdict) || "MOSTLY SUPPORTED".equals(verdict)) return "#06B6D4"; // Cyan
+        if ("DISPUTED / MIXED EVIDENCE".equals(verdict) || "PARTIALLY SUPPORTED".equals(verdict) || "MIXED / CONFLICTING EVIDENCE".equals(verdict) || "DEVELOPING EVENT".equals(verdict)) return "#F59E0B"; // Amber Yellow
+        if ("UNVERIFIED / WEAK SUPPORT".equals(verdict) || "LIKELY FABRICATED".equals(verdict) || "UNVERIFIED".equals(verdict)) return "#F97316"; // Orange
         if ("INSUFFICIENT EVIDENCE".equals(verdict) || "INSUFFICIENT_EVIDENCE".equals(verdict) || "INSUFFICIENT EVIDENCE / AMBIGUOUS CLAIM".equals(verdict)) return "#94A3B8"; // Slate Gray
-        if ("PARTIALLY SUPPORTED".equals(verdict) || "MIXED / CONFLICTING EVIDENCE".equals(verdict) || "DEVELOPING EVENT".equals(verdict)) return "#F59E0B"; // Amber Yellow
         if ("NON-VERIFIABLE INPUT".equals(verdict) || "NOT_VERIFIABLE".equals(verdict) || "NON-VERIFIABLE IMAGE".equals(verdict) || "NO CLAIM DETECTED".equals(verdict)) return "#64748B"; // Neutral Slate
         return "#EF4444"; // Crimson Red
     }

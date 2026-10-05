@@ -42,9 +42,10 @@ public class RateLimitingFilter extends OncePerRequestFilter {
         String clientIp = extractClientIp(request);
         long now = System.currentTimeMillis();
 
-        // 1. Auth Endpoint Protection (Brute Force / Credential Stuffing Mitigation)
-        if (path.startsWith("/api/auth/login") || path.startsWith("/api/auth/register")) {
-            String bucketKey = "auth_" + clientIp;
+        // 1. Auth, Data Export & Admin Endpoint Protection (10 req/min)
+        if (path.startsWith("/api/auth/login") || path.startsWith("/api/auth/register")
+                || path.startsWith("/api/history/export") || path.startsWith("/api/admin")) {
+            String bucketKey = "sensitive_" + clientIp;
             ClientBucket bucket = clientBuckets.compute(bucketKey, (key, existing) -> {
                 if (existing == null || (now - existing.windowStart) > ONE_MINUTE_MILLIS) {
                     return new ClientBucket(now);
@@ -55,11 +56,11 @@ public class RateLimitingFilter extends OncePerRequestFilter {
             });
 
             if (bucket.requestCount.get() > MAX_AUTH_REQUESTS_PER_MINUTE) {
-                log.warn("Auth rate limit exceeded for IP: {} on URI: {}", clientIp, path);
+                log.warn("Rate limit exceeded for IP: {} on URI: {}", clientIp, path);
                 response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
                 response.setContentType("application/json");
                 response.setHeader("Retry-After", "60");
-                response.getWriter().write("{\"status\":429,\"error\":\"Too Many Requests\",\"message\":\"Rate limit exceeded on authentication. Maximum 10 attempts per minute allowed to prevent brute-force attacks.\",\"retryAfterSeconds\":60}");
+                response.getWriter().write("{\"status\":429,\"error\":\"Too Many Requests\",\"message\":\"Rate limit exceeded on this endpoint. Maximum 10 requests per minute allowed.\",\"retryAfterSeconds\":60}");
                 return;
             }
         }

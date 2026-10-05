@@ -869,4 +869,21 @@ public class FactCheckEngineServiceTest {
         long distinctClusters = sources.stream().map(ClaimVerificationResponse.SourceEvidence::getClusterId).distinct().count();
         assertEquals(2, distinctClusters, "PTI + Official Police Source must form 2 independent clusters");
     }
+
+    @Test
+    @DisplayName("ECR Round 3 - Single Tier-1 Primary Authority Precedence: Base 35 with 0 penalty resolves to AUTHORITATIVE_PRIMARY_NOTICE and NOT WEAK SUPPORT")
+    public void testSingleSourceTier1AuthoritativeNoticePrecedence() {
+        ClaimVerificationRequest request = ClaimVerificationRequest.builder()
+                .type("TEXT")
+                .content("European Space Agency Euclid space telescope releases first full-color wide-field high-resolution cosmos survey images")
+                .build();
+
+        ClaimVerificationResponse response = factCheckEngineService.verifyClaim(request);
+
+        assertNotNull(response);
+        assertEquals("AUTHORITATIVE_PRIMARY_NOTICE / AWAITING_CORROBORATION", response.getVerdict(),
+                "Single Tier-1 confirmed source (Base 35, Penalty 0) must resolve to AUTHORITATIVE_PRIMARY_NOTICE / AWAITING_CORROBORATION by precedence");
+        assertEquals("#38BDF8", response.getVerdictBadgeColor(), "Verdict badge color must be Sky Blue (#38BDF8)");
+        assertFalse(response.getVerdict().contains("WEAK SUPPORT"), "Must not fall into generic UNVERIFIED / WEAK SUPPORT band");
+    }
 }
