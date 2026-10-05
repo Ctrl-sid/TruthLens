@@ -146,7 +146,7 @@ export default function AuthModal({ show, onClose }) {
                     required
                   />
                   <label className="form-check-label small text-muted" htmlFor="dpdpConsentCheck" style={{ fontSize: '11px', lineHeight: '1.4' }}>
-                    I consent to TruthLens logging my verification queries and processing claim telemetry in compliance with the <strong>Digital Personal Data Protection (DPDP) Act 2023</strong>. I understand I can export or purge my verification history at any time.
+                    I consent to TruthLens logging my verification queries and cross-referencing claim text with accredited wire archives and public verification registries in compliance with the <strong>Digital Personal Data Protection (DPDP) Act 2023</strong>. TruthLens does not share personal user telemetry with commercial advertising third parties, and I can export or purge my verification history at any time.
                   </label>
                 </div>
               )}

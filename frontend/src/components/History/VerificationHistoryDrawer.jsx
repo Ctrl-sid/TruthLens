@@ -130,9 +130,12 @@ export default function VerificationHistoryDrawer({
         ) : (
           <div className="text-center py-5 text-muted">
             <i className="bi bi-shield-lock fs-1 text-cyan mb-3 d-block"></i>
-            <h6 className="fw-bold text-white mb-2">Sign In Required for History Privacy</h6>
-            <p className="small text-muted mb-0">
-              To protect your privacy, search prompts are kept confidential and only saved to registered user accounts.
+            <h6 className="fw-bold text-white mb-2">Sign In Required for History & Privacy</h6>
+            <p className="small text-muted mb-2">
+              Under India's <strong>DPDP Act 2023</strong>, personal verification history is stored confidentially and associated exclusively with registered user accounts.
+            </p>
+            <p className="small text-muted mb-0" style={{ fontSize: '0.75rem' }}>
+              Claim text is cross-referenced solely with accredited wire archives and public verification registries. Users can export or purge their data at any time.
             </p>
           </div>
         )}

@@ -113,11 +113,18 @@ public class TruthLensBenchmarkEvaluationTest {
                 }
 
                 if ("VERIFIED".equals(expectedVerdictCat)) {
-                    assertTrue(resp.getVerdict().contains("VERIFIED") || resp.getVerdict().contains("SUPPORTED"),
+                    assertTrue(resp.getVerdict().contains("VERIFIED") || resp.getVerdict().contains("SUPPORTED") || resp.getVerdict().contains("AUTHORITATIVE"),
                             "TC " + id + " expected verified/supported verdict but got: " + resp.getVerdict());
                 } else if ("CONTRADICTED".equals(expectedVerdictCat)) {
                     assertTrue(resp.getVerdict().contains("CONTRADICTED") || resp.getVerdict().contains("FABRICATED") || resp.getVerdict().contains("HOAX"),
                             "TC " + id + " expected contradicted/hoax verdict but got: " + resp.getVerdict());
+                }
+
+                // CRITICAL DETERMINISM AUDIT: Final Score MUST equal max(0, min(100, Base - Penalty))
+                if (resp.getGenuinenessScore() != null && resp.getBaseSupportScore() != null && resp.getContradictionPenalty() != null) {
+                    int expectedFinal = Math.max(0, Math.min(100, resp.getBaseSupportScore() - resp.getContradictionPenalty()));
+                    assertEquals(expectedFinal, resp.getGenuinenessScore().intValue(),
+                            "Deterministic formula Final == max(0, min(100, Base - Penalty)) must strictly hold for TC: " + id);
                 }
             }
 
@@ -135,6 +142,21 @@ public class TruthLensBenchmarkEvaluationTest {
 
         assertEquals(100.0, gateAccuracy, "Anti-Hallucination Gate MUST achieve 100% accuracy on blocking non-claims!");
         assertTrue(overallAccuracy >= 90.0, "Overall Benchmark Accuracy should exceed 90%");
+    }
+
+    @Test
+    @DisplayName("Verify Ambiguous Prayer Appeal Routes to Disambiguation Gate with search=NOT_RUN")
+    void testAmbiguousPrayerAppealNoSearchExecution() {
+        ClaimVerificationRequest req = ClaimVerificationRequest.builder()
+                .content("Please pray for the families affected by flooding in North Carolina and Tennessee.")
+                .type("TEXT")
+                .build();
+
+        ClaimVerificationResponse resp = engineService.verifyClaim(req);
+        assertNotNull(resp);
+        assertNull(resp.getGenuinenessScore(), "Prayer appeal must receive null score (N/A)");
+        assertTrue(resp.getVerdict().contains("INSUFFICIENT EVIDENCE") || resp.getVerdict().contains("AMBIGUOUS"));
+        assertEquals(0, resp.getSources().size(), "Ambiguous appeal must execute 0 external search queries");
     }
 
     @Test

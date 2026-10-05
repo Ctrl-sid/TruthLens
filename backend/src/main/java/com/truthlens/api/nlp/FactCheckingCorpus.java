@@ -270,6 +270,22 @@ public class FactCheckingCorpus {
                 "Pulwama Terror Attack Official Casualty Record",
                 "Government of India and Central Reserve Police Force official records document 40 CRPF personnel killed in the February 2019 Pulwama terror attack.",
                 List.of("pulwama", "crpf", "terror", "attack", "killed", "convoy", "kashmir"));
+
+        addEntry("TRUE-013",
+                "India dispatched humanitarian aid and disaster relief materials to Nepal following flash floods and landslides",
+                "Disaster Relief & Diplomacy", false, "Verified True",
+                "Ministry of External Affairs & PTI & Reuters", "mea.gov.in", "https://www.mea.gov.in/press-releases.htm",
+                "Operation Sadbhav: India Delivers Emergency Relief Materials to Flood-Hit Nepal",
+                "The Ministry of External Affairs (MEA) and Indian Air Force dispatches confirmed delivery of over 30 tonnes of emergency humanitarian relief packages to Nepal following devastating monsoon floods.",
+                List.of("nepal", "relief", "dispatched", "materials", "floods", "india", "humanitarian"));
+
+        addEntry("TRUE-014",
+                "NASA James Webb Space Telescope captured deep field image of galaxy cluster SMACS 0723 revealing early universe galaxies",
+                "Science & Astronomy", false, "Verified True",
+                "NASA & Associated Press & Reuters", "nasa.gov", "https://www.nasa.gov/webbfirstimages",
+                "NASA's Webb Delivers Deepest Infrared Image of Universe Yet",
+                "NASA, ESA, and CSA officially released the first operational deep field infrared image from the James Webb Space Telescope depicting galaxy cluster SMACS 0723 as it appeared 4.6 billion years ago.",
+                List.of("smacs", "0723", "deep", "field", "galaxy", "cluster", "webb", "nasa", "telescope"));
     }
 
     private void addEntry(String id, String text, String category, boolean isDebunkedFake,

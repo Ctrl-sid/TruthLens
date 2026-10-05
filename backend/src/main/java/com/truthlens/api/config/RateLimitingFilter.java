@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class RateLimitingFilter extends OncePerRequestFilter {
 
     private static final int MAX_REQUESTS_PER_MINUTE = 30;
+    private static final int MAX_AUTH_REQUESTS_PER_MINUTE = 10;
     private static final long ONE_MINUTE_MILLIS = 60_000L;
 
     private static class ClientBucket {
@@ -38,12 +39,35 @@ public class RateLimitingFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
 
         String path = request.getRequestURI();
-        // Apply rate limit specifically to verification & NLP endpoints
-        if (path.startsWith("/api/verify") || path.startsWith("/api/nlp")) {
-            String clientIp = extractClientIp(request);
-            long now = System.currentTimeMillis();
+        String clientIp = extractClientIp(request);
+        long now = System.currentTimeMillis();
 
-            ClientBucket bucket = clientBuckets.compute(clientIp, (key, existing) -> {
+        // 1. Auth Endpoint Protection (Brute Force / Credential Stuffing Mitigation)
+        if (path.startsWith("/api/auth/login") || path.startsWith("/api/auth/register")) {
+            String bucketKey = "auth_" + clientIp;
+            ClientBucket bucket = clientBuckets.compute(bucketKey, (key, existing) -> {
+                if (existing == null || (now - existing.windowStart) > ONE_MINUTE_MILLIS) {
+                    return new ClientBucket(now);
+                } else {
+                    existing.requestCount.incrementAndGet();
+                    return existing;
+                }
+            });
+
+            if (bucket.requestCount.get() > MAX_AUTH_REQUESTS_PER_MINUTE) {
+                log.warn("Auth rate limit exceeded for IP: {} on URI: {}", clientIp, path);
+                response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
+                response.setContentType("application/json");
+                response.setHeader("Retry-After", "60");
+                response.getWriter().write("{\"status\":429,\"error\":\"Too Many Requests\",\"message\":\"Rate limit exceeded on authentication. Maximum 10 attempts per minute allowed to prevent brute-force attacks.\",\"retryAfterSeconds\":60}");
+                return;
+            }
+        }
+
+        // 2. Verification & NLP Endpoints Protection
+        if (path.startsWith("/api/verify") || path.startsWith("/api/nlp")) {
+            String bucketKey = "verify_" + clientIp;
+            ClientBucket bucket = clientBuckets.compute(bucketKey, (key, existing) -> {
                 if (existing == null || (now - existing.windowStart) > ONE_MINUTE_MILLIS) {
                     return new ClientBucket(now);
                 } else {
@@ -53,7 +77,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
             });
 
             if (bucket.requestCount.get() > MAX_REQUESTS_PER_MINUTE) {
-                log.warn("Rate limit exceeded for IP: {} on URI: {}", clientIp, path);
+                log.warn("Verification rate limit exceeded for IP: {} on URI: {}", clientIp, path);
                 response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
                 response.setContentType("application/json");
                 response.setHeader("Retry-After", "60");
